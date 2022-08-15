@@ -1,0 +1,75 @@
+---
+title: "PS7 R Solutions"
+author: "Matthew Alampay Davis"
+date: "December 9, 2021"
+output:
+  pdf_document: default
+---
+
+```{r, include = FALSE}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Pset R Solutions')
+library(readstata13)
+library(dplyr)
+library(estimatr)
+library(ggplot2)
+library(magrittr)
+library(car)
+library(knitr)
+library(lmtest)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+
+# Question 1
+
+This is non-empirical. See the official solutions.
+
+# Question 2
+
+```{r}
+wage <- read.dta13('wage2.dta')
+head(wage)
+```
+
+## Part a ##
+
+```{r}
+mod.2sls <- iv_robust(lwage ~ educ + exper + tenure + black | sibs + exper + tenure + black,
+                      data = wage, se_type = 'HC0')
+summary(mod.2sls)
+```
+Just a note here that heteroskedasticity-robust standard errors that Stata uses are HC1 except when doing a 2SLS regression, in which case it defaults to HC0. No clue why, but that's why se_type = 'stata' doesn't actually give you the Stata default in this particular case.
+
+## Part b ##
+
+This question asks us to do the first-stage and second-stage regressions yourself manually:
+
+```{r}
+# First stage
+mod.manual.1 <- lm(educ ~ sibs + exper + tenure + black,
+                              data = wage)
+wage$educ.hat <- mod.manual.1$fitted.values
+# Second stage
+mod.manual.2 <- lm(lwage ~ educ.hat + exper + tenure + black,
+                               data = wage)
+summary(mod.manual.2)
+```
+The coefficient on educ.hat is the same but the standard errors are slightly too large
+
+## Part c ##
+
+```{r}
+# First stage
+mod.wrong.1 <- lm(educ ~ sibs,
+                  data = wage)
+wage$educ.tilde <- mod.wrong.1$fitted.values
+# Second stage
+mod.wrong.2 <- lm(lwage ~ educ.tilde + exper + tenure + black,
+                               data = wage)
+summary(mod.wrong.2)
+```
+
+When instead we (incorrectly) use educ.tilde in the second stage regression, its coefficient is 0.0700, and the corresponding standard error is 0.0264. Both are too low. The reduction in the estimated return to education from about 9.4\% to 7.0\% is not trivial. This illustrates that it is best to avoid doing 2SLS manually.
+
+# Question 3
+
+This is non-empirical. See official solutions.

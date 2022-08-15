@@ -1,0 +1,157 @@
+---
+title: "Recitation 8 Notes: Instrumental Variables"
+author: "Matthew Alampay Davis"
+date: "December 5, 2021"
+output:
+  pdf_document: default
+---
+
+```{r, include = F}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Recitation 8')
+library(readstata13)
+library(dplyr)
+library(estimatr)
+library(ggplot2)
+library(magrittr)
+library(car)
+library(lmtest)
+library(pscl)
+library(sandwich)
+library(margins)
+```
+
+# Instrumental variables regressions
+
+Let's use the following dataset:
+
+```{r}
+daron <- read.dta13('maketable4.dta')
+```
+This dataset was used in a famous study seeking to further the understanding of why countries farther from the equator seem to enjoy higher economic growth. The authors attribute the difference to a pattern of European colonization which was different in different climates. Areas in which Europeans had more resistance to the local diseases were colonized such that governmental institutions came to resemble those in Europe. Areas where Europeans had less resistance to the local diseases were colonized such that governmental institutions were created to extract wealth from the colony and its local inhabitants.
+
+The authors have assessments of current government institutions in many countries, and of the government institutions that existed in the past, and data on GDP. They would like to show that government institutions are a large factor in determining economic well-being. They also would like to show that due to the extraordinarily high persistence of culture, current institutions seem to have their roots in the distant past, particularly the in the experience of European colonization. Economists sometimes use the word strong to indicate democratic-type institutions and the word weak to indicate institutions that do not offer much protection from rights violations and expropriation.
+
+But the authors worry about endogeneity. As an example, the colonists’ wealth could feed back into their choice of government institutions. If that is true, then it is some aspect of colonization other than disease resistance that may have caused the path-dependent outcome of institutions. Or it may have been the religion or some other aspect of the culture of particular European groups that caused different paths for institutions.
+
+Instrumental variables and two-stage least squares provide a mechanism to examine only the input of European disease resistance during the colonization period on the formulation of governmental institutions. The governmental institutions index is regressed upon the European mortality rate during colonization, and control variables. The predicted governmental institutions strength can then be interpreted as the portion of institutional strength that can be attributed to the European disease resistance. The outcome of these regressions is quite interesting on its own, and the authors always report both stages of their two-stage process.
+
+The predicted institutional strength is then regressed on GDP to show that past European disease resistance is a major factor in explaining the current arrangement of GDP around the world, and the linkage between the past experience and the current situation is governmental institutions.
+
+## Short version of above:
+
+Authors want to measure the effect of institution type on modern economic growth. They were worried that institution type is endogeneous to growth. They argue that modern institution type is likely related to the choice of institutions that European colonists chose to put in place in a given area and that they likely chose "good" institutions in areas where they had disease resistance and chose "extractive" institutions (bad for growth) in areas where they did not have strong disease resistance. So per capita mortality is a candidate for an instrument that can enable IV estimation of the effect of institutions on growth.
+
+## Instrumental variables regressions
+
+To do 2SLS, let's use "iv_robust", which like "lm_robust" comes from the *estimatr* package and takes in an "se_type" argument as well. Important to note here that for IV regressions, we'll want to indicate "se_type = 'HC0'" for our choice of heteroskedasticity-robust standard errors. Remember we found that "se_type = 'stata'" is the same as "se_type = 'HC1'". BUT for some reason, Stata defaults to a different formula ('HC0') when doing IV regressions. I don't know why (everyone should be using 'HC3' anyway to be honest), but we'll want to match Stata solutions so please remember this.
+
+So let's run our first 2SLS regression where
+
+* *logpgp95* is the outcome variable, log 1995 GDP 
+* *avexpr* is the endogenous variable, the average (contemporary) protection against expropriation risk (consider this a measure of institution quality)
+* *logem4* is the instrumental variable, the log of the colonial settler mortality rate (consider this a measure of colonist disease resistance of a particular area)
+* *lat_abst* is a measure of the latitude which we use as a control variable
+
+So let's run the IV regression without the control variable: one endogenous variable and one instrument:
+
+```{r}
+mod.1 <- iv_robust(logpgp95 ~ avexpr | logem4,
+                  data = daron,
+                  se_type = 'HC0') # Note the choice of standard errors is different!
+summary(mod.1)
+```
+
+Note the use of the '|' in the formula. On the left side of the | are the regressors as given in the model with the endogenous variables and control variables (no controls in this case). On the right side are all the regressors but replacing the endogenous variables with instruments (in this case, we had one endogenous regressor which is replaced with one instrument). Note that estimation is only possible if there are at least as many regressors on the right as on the left, i.e., the model is just-identified or overidentified (exogenous regressors appear on both sides).
+
+To make this more concrete, consider a second model where *lat_abst* is used as a control variable (or an additional exogenous regressor). This means we only want to instrument for *avexpr* not *lat_abst*.
+
+```{r}
+mod.2 <- iv_robust(logpgp95 ~ lat_abst + avexpr | lat_abst + logem4, data = daron, se_type = 'HC0')
+summary(mod.2)
+```
+So we included *lat_abst* on both sides of the bar "|" in the formula argument. If we hadn't included it on the right side, then the model would assume *lat_abst* was another endogenous variable and it'd have more endogenous variables than instruments, which would prevent the regression from running.
+
+And we can do the same with even more controls. Say we include all the continent dummies as control variables:
+
+```{r}
+daron %<>% mutate(other = shortnam %in% c('AUS', 'NZL', 'MLT')) # Countries not in Africa or Asia
+mod.3 <- iv_robust(logpgp95 ~ avexpr + africa + asia + other + lat_abst |
+                     logem4 + africa + asia + other + lat_abst,
+                  data = daron,
+                  se_type = 'HC0')
+summary(mod.3)
+```
+## Overidentification tests
+
+If we wanted to test for weak instruments or do an overidentification test, we'd add an argument to "iv_robust" called "diagnostics":
+
+```{r}
+model.tests <- iv_robust(logpgp95 ~ avexpr | lat_abst + logem4,
+                         data = daron, se_type = 'HC0',
+                         diagnostics = T) # New argument
+summary(model.tests)
+```
+We get the same regression results but now have three new test results under diagnostics. The Weak instruments test gives us the F-statistic under the "value" column. The Wu-Hausman test returns the test for the endogeneity of the endogenous variables (we do not cover this in class). The overidentifying test gives the results for the test of the hypothesis that all instruments are exogenous. We can also run the following:
+
+```{r}
+model.tests$diagnostic_first_stage_fstatistic
+model.tests$diagnostic_overid_test
+```
+
+
+# Empirical Exercise 12.1 #
+
+How does fertility affect labor supply? That is, how much does a woman’s labor supply fall when she has an additional child? In this exercise, you will estimate this effect using data for married women from the 1980 U.S. Census.
+
+The data set contains information on married women aged 21–35 with two or more children:
+
+```{r}
+fertility <- read.dta13('fertility.dta')
+head(fertility)
+```
+## Part a: Regress weeks worked on the indicator variable morekids, using OLS. On average, do women with more than two children work less than women with two children? How much less?
+
+```{r}
+mod.a <- lm_robust(weeksm1 ~ morekids, data = fertility, se_type = 'stata')
+summary(mod.a)
+```
+The coefficient is -5.387, which indicates that women with more than 2 children work 5.387 fewer weeks per year than women with 2 or fewer children.
+
+## Part b: Explain why the OLS regression estimated in (a) is inappropriate for estimating the causal effect of fertility (morekids) on labor supply (weeksworked).
+
+Both fertility and weeks worked are choice variables. A women with a positive labor supply regression error (a women who works more than average) may also be a woman who is less likely to have an additional child. This would imply that Morekids is positively correlated with the regression error, so that the OLS estimator on the coefficient of morekids is positively biased.
+
+## Part c: The data set contains the variable samesex, which is equal to 1 if the first two children are of the same sex (boy–boy or girl–girl) and equal to 0 otherwise. Are couples whose first two children are of the same sex more likely to have a third child? Is the effect large? Is it statistically significant?
+
+```{r}
+mod.c <- lm_robust(morekids ~ samesex, data = fertility, se_type = 'stata')
+summary(mod.c)
+```
+Couples with samesex = 1 are 6.6\% more likely to have an additional child that couples
+with samesex = 0. The effect is highly significant.
+
+## Part d: Explain why samesex is a valid instrument for the IV regression of weeksworked on morekids.
+
+Samesex is random and is unrelated to any of the other variables in the model including the error term in the labor supply equation. Thus, the instrument is exogenous. From (c), the first stage F-statistic is large (F = 1238) so the instrument is relevant. Together, these imply that samesex is a valid instrument.
+
+## Part e: Is samesex a weak instrument?
+
+No, for the reason in (d)
+
+## Part f: Estimate the IV regression of weeksworked on morekids, using samesex as an instrument. How large is the fertility effect on labor supply?
+
+```{r}
+mod.f <- iv_robust(weeksm1 ~ morekids | samesex, data = fertility, se_type = 'HC0')
+summary(mod.f)
+```
+The estimated coefficient is -6.314.
+
+## Part g: Do the results change when you include the variables agem1, black, hispan, and othrace in the labor supply regression (treating these variable as exogenous)? Explain why or why not.
+
+```{r}
+mod.g <- iv_robust(weeksm1 ~ morekids + agem1 + black + hispan + othrace |
+                     samesex + agem1 + black + hispan + othrace,
+                   data = fertility, se_type = 'HC0')
+summary(mod.g)
+```
+The results do not change in an important way. The reason is that samesex is unrelated to agem1, black, hispan, othrace, so that there is no omitted variable bias in IV regression in (2).

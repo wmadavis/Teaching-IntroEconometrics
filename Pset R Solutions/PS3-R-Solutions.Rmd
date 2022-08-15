@@ -1,0 +1,83 @@
+---
+title: "PS3 R Solutions"
+author: "Matthew Alampay Davis"
+date: "October 18, 2021"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r, include = FALSE}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Pset R Solutions')
+library(readstata13)
+library(dplyr)
+library(estimatr)
+library(ggplot2)
+library(magrittr)
+library(car)
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+# Question 1 #
+
+Non-empirical. See official solutions.
+
+# Question 2 #
+
+```{r}
+gpa4 <- read.dta13('GPA4.dta')
+gpa.mod1 <- lm_robust(colGPA ~ hsGPA + skipped, data = gpa4, se_type = 'stata')
+gpa.mod2 <- lm_robust(colGPA ~ hsGPA + skipped + PC, data = gpa4, se_type = 'stata')
+gpa.mod3 <- lm_robust(colGPA ~ hsGPA + skipped + PC + bgfriend + campus, data = gpa4, se_type = 'stata')
+```
+
+## Part a
+
+```{r}
+summary(gpa.mod1)
+```
+
+$$
+\begin{aligned}
+\hat{\text{colGPA}} = &\ 1.579 &\ + 0.458 \text{hsGPA} &\ -0.077\text{skipped}\\
+                      &\ (0.325) &\ (0.094)            &\ (0.025)
+\end{aligned}
+$$
+
+## Part b
+
+The coefficient on hsGPA is 0.458. This means that a one point increase in hsGPA will lead to an increase of 0.458 points in colGPA (college GPA). Students with higher GPAs in high school tend to have higher college GPAs.
+
+## Part c
+
+The t-statistic for H0: skipped=0 vs H1: skipped!= 0 is -3.05. Since |-3.05|>1.96 we can reject H0 and conclude skipped is statistically different than 0. We are essentially testing if on average skipping classes would affect students’ college GPA (in layman words).
+
+## Part d
+
+```{r}
+gpa.mod1$statistic['skipped']
+gpa.mod2$statistic['skipped']
+gpa.mod3$statistic['skipped']
+```
+
+The critical value for a two-sided test at the 1% significance level is 2.58, so we reject $H_0$ (that the coefficient on skipped is equal to zero) in Regressions 1 and 3. We cannot reject $H_0$ in regression 2. (We may also compare the p-values with 0.01 as instructed in the problem)
+
+## Part e
+
+```{r}
+gpa.mod3$coefficients['campus']
+```
+
+The coefficient on campus is -0.124. This means living on campus reduces colGPA by 0.124 points. The negative sign on the coefficient might be because students who live on campus have more distractions that they would if they lived at home. However, students who live on campus are also more able to study with one another, so it is not clear whether the sign of the coefficient should be positive or negative; it would depend on which effect was stronger. The size of the coefficient is about one-tenth of a point, which is small. Note that the coefficient is not statistically different than 0, so there is not too much we can say.
+
+## Part f
+
+```{r}
+gpa.mod3$coefficients['bgfriend']
+```
+
+The coefficient on bgfriend is 0.085. This means having a boyfriend or girlfriend increases GPA by 0.085. One would expect the coefficient to be positive or negative, such as: the coefficient could be positive if students who are more intelligent are more likely to be dating (here we have a correlation), alternatively, the sign could be negative if dating distracts a student from studying. However, here the magnitude of the coefficient is very small also note that the coefficient is not statistically significant. Hence, we can conclude that there is no significant effect on GPA of dating.
+
+# Question 3
+
+Non-empirical. See official solutions.

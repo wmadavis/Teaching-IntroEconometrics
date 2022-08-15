@@ -1,0 +1,476 @@
+-------------------------------------------------------------------------------------------
+      name:  <unnamed>
+       log:  /Users/tamratgashaw/Desktop/3412/ECONUN3412 FA21/PS#6 FA21 a/PS5.log
+  log type:  text
+ opened on:  20 Nov 2021, 12:21:00
+
+. do "/var/folders/yt/1p4yc1zd78z8cx1ph0z1r3mm0000gn/T//SD28821.000000"
+
+. //*****************Q#1*******************//
+. describe
+
+Contains data from /Users/tamratgashaw/Desktop/3412/ECONUN3412 FA21/PS#6 FA21 a/Smoking.dta
+  obs:        10,000                          
+ vars:            10                          11 Feb 2002 16:44
+-------------------------------------------------------------------------------------------
+              storage   display    value
+variable name   type    format     label      variable label
+-------------------------------------------------------------------------------------------
+smoker          byte    %8.0g                 =1 if a current smoker
+smkban          byte    %9.0g                 =1 if there is a work area smoking bans
+age             byte    %9.0g                 age in years
+hsdrop          byte    %9.0g                 =1 if hs dropout
+hsgrad          byte    %9.0g                 =1 if hs grad
+colsome         byte    %9.0g                 =1 if some college
+colgrad         byte    %9.0g                 =1 if college grad
+black           byte    %9.0g                 =1 if black
+hispanic        byte    %9.0g                 =1 if hispanic
+female          byte    %9.0g                 =1 if female
+-------------------------------------------------------------------------------------------
+Sorted by: 
+
+. sum smoker
+
+    Variable |        Obs        Mean    Std. Dev.       Min        Max
+-------------+---------------------------------------------------------
+      smoker |     10,000       .2423    .4284963          0          1
+
+. sum smoker if smkban==1
+
+    Variable |        Obs        Mean    Std. Dev.       Min        Max
+-------------+---------------------------------------------------------
+      smoker |      6,098    .2120367    .4087842          0          1
+
+. sum smoker if smkban==0
+
+    Variable |        Obs        Mean    Std. Dev.       Min        Max
+-------------+---------------------------------------------------------
+      smoker |      3,902    .2895951    .4536326          0          1
+
+. reg smoker smkban, r
+
+Linear regression                               Number of obs     =     10,000
+                                                F(1, 9998)        =      75.06
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.0078
+                                                Root MSE          =     .42684
+
+------------------------------------------------------------------------------
+             |               Robust
+      smoker |      Coef.   Std. Err.      t    P>|t|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+      smkban |  -.0775583    .008952    -8.66   0.000    -.0951061   -.0600106
+       _cons |   .2895951   .0072619    39.88   0.000     .2753604    .3038298
+------------------------------------------------------------------------------
+
+. test smkban
+
+ ( 1)  smkban = 0
+
+       F(  1,  9998) =   75.06
+            Prob > F =    0.0000
+
+. gen age2=age*age
+
+. reg smoker smkban female age age2 hsdrop hsgrad colsome colgrad black hispanic, r
+
+Linear regression                               Number of obs     =     10,000
+                                                F(10, 9989)       =      68.75
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.0570
+                                                Root MSE          =     .41631
+
+------------------------------------------------------------------------------
+             |               Robust
+      smoker |      Coef.   Std. Err.      t    P>|t|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+      smkban |  -.0472399   .0089661    -5.27   0.000    -.0648153   -.0296645
+      female |  -.0332569   .0085683    -3.88   0.000    -.0500525   -.0164612
+         age |   .0096744   .0018954     5.10   0.000      .005959    .0133898
+        age2 |  -.0001318   .0000219    -6.02   0.000    -.0001747   -.0000889
+      hsdrop |   .3227142   .0194885    16.56   0.000     .2845128    .3609156
+      hsgrad |   .2327012   .0125903    18.48   0.000     .2080217    .2573807
+     colsome |   .1642968   .0126248    13.01   0.000     .1395495     .189044
+     colgrad |   .0447983   .0120438     3.72   0.000       .02119    .0684066
+       black |  -.0275658   .0160785    -1.71   0.086    -.0590828    .0039513
+    hispanic |  -.1048159   .0139748    -7.50   0.000    -.1322093   -.0774226
+       _cons |  -.0141099   .0414228    -0.34   0.733    -.0953069    .0670872
+------------------------------------------------------------------------------
+
+. test hsdrop hsgrad colsome colgrad
+
+ ( 1)  hsdrop = 0
+ ( 2)  hsgrad = 0
+ ( 3)  colsome = 0
+ ( 4)  colgrad = 0
+
+       F(  4,  9989) =  140.09
+            Prob > F =    0.0000
+
+. 
+. reg smoker smkban female age age2 hsdrop hsgrad colsome colgrad black hispanic, r
+
+Linear regression                               Number of obs     =     10,000
+                                                F(10, 9989)       =      68.75
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.0570
+                                                Root MSE          =     .41631
+
+------------------------------------------------------------------------------
+             |               Robust
+      smoker |      Coef.   Std. Err.      t    P>|t|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+      smkban |  -.0472399   .0089661    -5.27   0.000    -.0648153   -.0296645
+      female |  -.0332569   .0085683    -3.88   0.000    -.0500525   -.0164612
+         age |   .0096744   .0018954     5.10   0.000      .005959    .0133898
+        age2 |  -.0001318   .0000219    -6.02   0.000    -.0001747   -.0000889
+      hsdrop |   .3227142   .0194885    16.56   0.000     .2845128    .3609156
+      hsgrad |   .2327012   .0125903    18.48   0.000     .2080217    .2573807
+     colsome |   .1642968   .0126248    13.01   0.000     .1395495     .189044
+     colgrad |   .0447983   .0120438     3.72   0.000       .02119    .0684066
+       black |  -.0275658   .0160785    -1.71   0.086    -.0590828    .0039513
+    hispanic |  -.1048159   .0139748    -7.50   0.000    -.1322093   -.0774226
+       _cons |  -.0141099   .0414228    -0.34   0.733    -.0953069    .0670872
+------------------------------------------------------------------------------
+
+.     predict linear_yhat  // for percent correctly predicted
+(option xb assumed; fitted values)
+
+.         gen linear_yhat2=linear_yhat>0.5
+
+.         count if smoker==linear_yhat2
+  7,577
+
+.         di r(N)/_N
+.7577
+
+.         
+. // linear, Ms.A, male, white, non-hispanic, 20 years old, high school dropout
+. sca linear_a1 =_b[_cons]+_b[smkban]*1+_b[female]*0+_b[age]*20+_b[age2]*20^2+_b[hsdrop]*1+
+> _b[hsgrad]*0+_b[colsome]*0+_b[colgrad]*0+_b[black]*0+_b[hispanic]*0
+
+. disp linear_a1
+.40213226
+
+. 
+. // linear, Ms.A, male, white, non-hispanic, 20 years old, high school dropout
+. sca linear_a0 =_b[_cons]+_b[smkban]*0+_b[female]*0+_b[age]*20+_b[age2]*20^2+_b[hsdrop]*1+
+> _b[hsgrad]*0+_b[colsome]*0+_b[colgrad]*0+_b[black]*0+_b[hispanic]*0
+
+. disp linear_a0
+.44937213
+
+. 
+. // difference
+. di linear_a1-linear_a0
+-.04723987
+
+. 
+. logit smoker smkban female age age2 hsdrop hsgrad colsome colgrad black hispanic, r
+
+Iteration 0:   log pseudolikelihood = -5537.1662  
+Iteration 1:   log pseudolikelihood = -5245.1234  
+Iteration 2:   log pseudolikelihood = -5234.0374  
+Iteration 3:   log pseudolikelihood = -5233.9986  
+Iteration 4:   log pseudolikelihood = -5233.9986  
+
+Logistic regression                             Number of obs     =     10,000
+                                                Wald chi2(10)     =     515.53
+                                                Prob > chi2       =     0.0000
+Log pseudolikelihood = -5233.9986               Pseudo R2         =     0.0548
+
+------------------------------------------------------------------------------
+             |               Robust
+      smoker |      Coef.   Std. Err.      z    P>|z|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+      smkban |  -.2620287    .049477    -5.30   0.000    -.3590019   -.1650555
+      female |  -.1907725   .0491763    -3.88   0.000    -.2871563   -.0943887
+         age |   .0599366   .0118227     5.07   0.000     .0367645    .0831087
+        age2 |  -.0008182   .0001431    -5.72   0.000    -.0010987   -.0005376
+      hsdrop |   2.016853   .1340272    15.05   0.000     1.754165    2.279542
+      hsgrad |   1.578504   .1157682    13.64   0.000     1.351602    1.805405
+     colsome |   1.229978   .1176499    10.45   0.000     .9993881    1.460567
+     colgrad |   .4465832   .1263721     3.53   0.000     .1988985    .6942679
+       black |  -.1560341     .09125    -1.71   0.087    -.3348809    .0228126
+    hispanic |  -.5971731   .0861865    -6.93   0.000    -.7660955   -.4282508
+       _cons |  -2.999182   .2652433   -11.31   0.000     -3.51905   -2.479315
+------------------------------------------------------------------------------
+
+.     predict logiti_yhat  // for percent correctly predicted
+(option pr assumed; Pr(smoker))
+
+.         gen logit_yhat2=logit_yhat>0.5
+logit_yhat not found
+r(111);
+
+end of do-file
+
+r(111);
+
+. do "/var/folders/yt/1p4yc1zd78z8cx1ph0z1r3mm0000gn/T//SD28821.000000"
+
+.     predict logit_yhat  // for percent correctly predicted
+(option pr assumed; Pr(smoker))
+
+.         gen logit_yhat2=logit_yhat>0.5
+
+.         count if smoker==logit_yhat2
+  7,599
+
+.         di r(N)/_N
+.7599
+
+.         
+. // Logit, Ms.A, male, white, non-hispanic, 20 years old, high school dropout
+. sca logit_a1 =_b[_cons]+_b[smkban]*1+_b[female]*0+_b[age]*20+_b[age2]*20^2+_b[hsdrop]*1+_
+> b[hsgrad]*0+_b[colsome]*0+_b[colgrad]*0+_b[black]*0+_b[hispanic]*0
+
+. 
+. disp 1/(1+exp(-logit_a1))
+.40784023
+
+. 
+. // logit, Ms.A, male, white, non-hispanic, 20 years old, high school dropout
+. sca logit_a0 =_b[_cons]+_b[smkban]*0+_b[female]*0+_b[age]*20+_b[age2]*20^2+_b[hsdrop]*1+_
+> b[hsgrad]*0+_b[colsome]*0+_b[colgrad]*0+_b[black]*0+_b[hispanic]*0
+
+. 
+. disp 1/(1+exp(-logit_a0))
+.47231028
+
+. 
+. // difference
+. di (1/(1+exp(-logit_a1)))-(1/(1+exp(-logit_a0)))
+-.06447005
+
+.         
+. probit smoker smkban female age age2 hsdrop hsgrad colsome colgrad black hispanic, r
+
+Iteration 0:   log pseudolikelihood = -5537.1662  
+Iteration 1:   log pseudolikelihood = -5238.7464  
+Iteration 2:   log pseudolikelihood =  -5235.868  
+Iteration 3:   log pseudolikelihood = -5235.8679  
+
+Probit regression                               Number of obs     =     10,000
+                                                Wald chi2(10)     =     542.93
+                                                Prob > chi2       =     0.0000
+Log pseudolikelihood = -5235.8679               Pseudo R2         =     0.0544
+
+------------------------------------------------------------------------------
+             |               Robust
+      smoker |      Coef.   Std. Err.      z    P>|z|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+      smkban |    -.15863   .0291099    -5.45   0.000    -.2156843   -.1015757
+      female |  -.1117313    .028841    -3.87   0.000    -.1682585    -.055204
+         age |   .0345114   .0068839     5.01   0.000     .0210192    .0480035
+        age2 |  -.0004675   .0000826    -5.66   0.000    -.0006295   -.0003056
+      hsdrop |    1.14161   .0729708    15.64   0.000     .9985902    1.284631
+      hsgrad |   .8826708   .0603706    14.62   0.000     .7643467    1.000995
+     colsome |   .6771192   .0614448    11.02   0.000     .5566896    .7975488
+     colgrad |   .2346839   .0654163     3.59   0.000     .1064703    .3628976
+       black |  -.0842789   .0534536    -1.58   0.115    -.1890461    .0204883
+    hispanic |  -.3382743   .0493523    -6.85   0.000     -.435003   -.2415457
+       _cons |  -1.734926   .1519802   -11.42   0.000    -2.032802   -1.437051
+------------------------------------------------------------------------------
+
+.     predict probit_yhat  // for percent correctly predicted
+(option pr assumed; Pr(smoker))
+
+.         gen probit_yhat2=probit_yhat>0.5
+
+.         count if smoker==probit_yhat2
+  7,593
+
+.         di r(N)/_N
+.7593
+
+. 
+. // Probit, Ms.A, male, white, non-hispanic, 20 years old, high school dropout
+. sca probit_a1 =_b[_cons]+_b[smkban]*1+_b[female]*0+_b[age]*20+_b[age2]*20^2+_b[hsdrop]*1+
+> _b[hsgrad]*0+_b[colsome]*0+_b[colgrad]*0+_b[black]*0+_b[hispanic]*0
+
+. 
+. disp normal(probit_a1)
+.40178304
+
+. 
+. // Probit, Ms.A, male, white, non-hispanic, 20 years old, high school dropout
+. sca probit_a0 =_b[_cons]+_b[smkban]*0+_b[female]*0+_b[age]*20+_b[age2]*20^2+_b[hsdrop]*1+
+> _b[hsgrad]*0+_b[colsome]*0+_b[colgrad]*0+_b[black]*0+_b[hispanic]*0
+
+. 
+. disp normal(probit_a1)
+.40178304
+
+. 
+. // difference
+. di normal(probit_a1)-normal(probit_a0)
+-.06231901
+
+. 
+. //********************* Ms. B*****************************//
+. //Ms. B:  female, black, 40 years old, college graduate
+. 
+. reg smoker smkban female age age2 hsdrop hsgrad colsome colgrad black hispanic, r
+
+Linear regression                               Number of obs     =     10,000
+                                                F(10, 9989)       =      68.75
+                                                Prob > F          =     0.0000
+                                                R-squared         =     0.0570
+                                                Root MSE          =     .41631
+
+------------------------------------------------------------------------------
+             |               Robust
+      smoker |      Coef.   Std. Err.      t    P>|t|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+      smkban |  -.0472399   .0089661    -5.27   0.000    -.0648153   -.0296645
+      female |  -.0332569   .0085683    -3.88   0.000    -.0500525   -.0164612
+         age |   .0096744   .0018954     5.10   0.000      .005959    .0133898
+        age2 |  -.0001318   .0000219    -6.02   0.000    -.0001747   -.0000889
+      hsdrop |   .3227142   .0194885    16.56   0.000     .2845128    .3609156
+      hsgrad |   .2327012   .0125903    18.48   0.000     .2080217    .2573807
+     colsome |   .1642968   .0126248    13.01   0.000     .1395495     .189044
+     colgrad |   .0447983   .0120438     3.72   0.000       .02119    .0684066
+       black |  -.0275658   .0160785    -1.71   0.086    -.0590828    .0039513
+    hispanic |  -.1048159   .0139748    -7.50   0.000    -.1322093   -.0774226
+       _cons |  -.0141099   .0414228    -0.34   0.733    -.0953069    .0670872
+------------------------------------------------------------------------------
+
+.     
+. // linear, Ms.B, female, black, 40 years old, college graduate
+. sca linear_b1 =_b[_cons]+_b[smkban]*1+_b[female]*1+_b[age]*40+_b[age2]*40^2+_b[hsdrop]*0+
+> _b[hsgrad]*1+_b[colsome]*1+_b[colgrad]*1+_b[black]*1+_b[hispanic]*0
+
+. disp linear_b1
+.49571913
+
+. 
+. // linear, Ms.A, female, black, 40 years old, college graduate
+. sca linear_b0 =_b[_cons]+_b[smkban]*0+_b[female]*1+_b[age]*40+_b[age2]*40^2+_b[hsdrop]*0+
+> _b[hsgrad]*1+_b[colsome]*1+_b[colgrad]*1+_b[black]*1+_b[hispanic]*0
+
+. disp linear_b0
+.542959
+
+. 
+. // difference
+. di linear_b1-linear_b0
+-.04723987
+
+. 
+. logit smoker smkban female age age2 hsdrop hsgrad colsome colgrad black hispanic, r
+
+Iteration 0:   log pseudolikelihood = -5537.1662  
+Iteration 1:   log pseudolikelihood = -5245.1234  
+Iteration 2:   log pseudolikelihood = -5234.0374  
+Iteration 3:   log pseudolikelihood = -5233.9986  
+Iteration 4:   log pseudolikelihood = -5233.9986  
+
+Logistic regression                             Number of obs     =     10,000
+                                                Wald chi2(10)     =     515.53
+                                                Prob > chi2       =     0.0000
+Log pseudolikelihood = -5233.9986               Pseudo R2         =     0.0548
+
+------------------------------------------------------------------------------
+             |               Robust
+      smoker |      Coef.   Std. Err.      z    P>|z|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+      smkban |  -.2620287    .049477    -5.30   0.000    -.3590019   -.1650555
+      female |  -.1907725   .0491763    -3.88   0.000    -.2871563   -.0943887
+         age |   .0599366   .0118227     5.07   0.000     .0367645    .0831087
+        age2 |  -.0008182   .0001431    -5.72   0.000    -.0010987   -.0005376
+      hsdrop |   2.016853   .1340272    15.05   0.000     1.754165    2.279542
+      hsgrad |   1.578504   .1157682    13.64   0.000     1.351602    1.805405
+     colsome |   1.229978   .1176499    10.45   0.000     .9993881    1.460567
+     colgrad |   .4465832   .1263721     3.53   0.000     .1988985    .6942679
+       black |  -.1560341     .09125    -1.71   0.087    -.3348809    .0228126
+    hispanic |  -.5971731   .0861865    -6.93   0.000    -.7660955   -.4282508
+       _cons |  -2.999182   .2652433   -11.31   0.000     -3.51905   -2.479315
+------------------------------------------------------------------------------
+
+.         
+. // Logit, Ms.A, female, black, 40 years old, college graduate
+. sca logit_b1 =_b[_cons]+_b[smkban]*1+_b[female]*1+_b[age]*40+_b[age2]*40^2+_b[hsdrop]*0+_
+> b[hsgrad]*1+_b[colsome]*1+_b[colgrad]*1+_b[black]*1+_b[hispanic]*0
+
+. 
+. disp 1/(1+exp(-logit_b1))
+.67599132
+
+. 
+. // logit, Ms.A, female, black, 40 years old, college graduate
+. sca logit_b0 =_b[_cons]+_b[smkban]*0+_b[female]*1+_b[age]*40+_b[age2]*40^2+_b[hsdrop]*0+_
+> b[hsgrad]*1+_b[colsome]*1+_b[colgrad]*1+_b[black]*1+_b[hispanic]*0
+
+. 
+. disp 1/(1+exp(-logit_b0))
+.73055468
+
+. 
+. // difference
+. di (1/(1+exp(-logit_b1)))-(1/(1+exp(-logit_b0)))
+-.05456336
+
+.         
+. probit smoker smkban female age age2 hsdrop hsgrad colsome colgrad black hispanic, r
+
+Iteration 0:   log pseudolikelihood = -5537.1662  
+Iteration 1:   log pseudolikelihood = -5238.7464  
+Iteration 2:   log pseudolikelihood =  -5235.868  
+Iteration 3:   log pseudolikelihood = -5235.8679  
+
+Probit regression                               Number of obs     =     10,000
+                                                Wald chi2(10)     =     542.93
+                                                Prob > chi2       =     0.0000
+Log pseudolikelihood = -5235.8679               Pseudo R2         =     0.0544
+
+------------------------------------------------------------------------------
+             |               Robust
+      smoker |      Coef.   Std. Err.      z    P>|z|     [95% Conf. Interval]
+-------------+----------------------------------------------------------------
+      smkban |    -.15863   .0291099    -5.45   0.000    -.2156843   -.1015757
+      female |  -.1117313    .028841    -3.87   0.000    -.1682585    -.055204
+         age |   .0345114   .0068839     5.01   0.000     .0210192    .0480035
+        age2 |  -.0004675   .0000826    -5.66   0.000    -.0006295   -.0003056
+      hsdrop |    1.14161   .0729708    15.64   0.000     .9985902    1.284631
+      hsgrad |   .8826708   .0603706    14.62   0.000     .7643467    1.000995
+     colsome |   .6771192   .0614448    11.02   0.000     .5566896    .7975488
+     colgrad |   .2346839   .0654163     3.59   0.000     .1064703    .3628976
+       black |  -.0842789   .0534536    -1.58   0.115    -.1890461    .0204883
+    hispanic |  -.3382743   .0493523    -6.85   0.000     -.435003   -.2415457
+       _cons |  -1.734926   .1519802   -11.42   0.000    -2.032802   -1.437051
+------------------------------------------------------------------------------
+
+. 
+. // Probit, Ms.A, female, black, 40 years old, college graduate
+. sca probit_b1 =_b[_cons]+_b[smkban]*1+_b[female]*1+_b[age]*40+_b[age2]*40^2+_b[hsdrop]*0+
+> _b[hsgrad]*1+_b[colsome]*1+_b[colgrad]*1+_b[black]*1+_b[hispanic]*0
+
+. 
+. disp normal(probit_b1)
+.63205401
+
+. 
+. // Probit, Ms.A, female, black, 40 years old, college graduate
+. sca probit_b0 =_b[_cons]+_b[smkban]*0+_b[female]*1+_b[age]*40+_b[age2]*40^2+_b[hsdrop]*0+
+> _b[hsgrad]*1+_b[colsome]*1+_b[colgrad]*1+_b[black]*1+_b[hispanic]*0
+
+. 
+. disp normal(probit_b0)
+.69002753
+
+. 
+. // difference
+. di normal(probit_b1)-normal(probit_b0)
+-.05797352
+
+. 
+. 
+end of do-file
+
+. log close
+      name:  <unnamed>
+       log:  /Users/tamratgashaw/Desktop/3412/ECONUN3412 FA21/PS#6 FA21 a/PS5.log
+  log type:  text
+ closed on:  20 Nov 2021, 12:22:08
+-------------------------------------------------------------------------------------------

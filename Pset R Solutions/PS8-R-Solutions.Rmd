@@ -1,0 +1,229 @@
+---
+title: "PS8 R Solutions"
+author: "Matthew Alampay Davis"
+date: "December 12, 2021"
+output:
+  pdf_document: default
+---
+
+```{r, include = FALSE}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Pset R Solutions')
+library(Quandl)
+library(lubridate)
+library(dplyr)
+library(magrittr)
+library(sandwich)
+library(ggplot2)
+
+library(estimatr)
+library(car)
+library(lmtest)
+library(knitr)
+```
+
+## Parts a and b
+
+```{r}
+Quandl.api_key('xHu2y3xExQ6bGkGqcYEi') # This is my personal API key
+gdp <- Quandl('FRED/GDPC1')
+m2 <- Quandl('FRED/M2REAL')
+gov <- Quandl('FRED/GCEC1')
+head(gdp)
+head(m2)
+head(gov)
+```
+
+Let's rename the variables for clarity:
+
+```{r}
+names(gdp)[2] <- 'gdp'
+names(m2)[2] <- 'm2'
+names(gov)[2] <- 'gov'
+```
+
+Since M2 is a stock variable, you can take the value of this series corresponding to the first month of each quarter to get the quarterly values of this variable. The function *Quandl* already has an argument called *collapse* that lets you do this, but it changes the Date values for some reason. So instead, we will use our old friend *filter*:
+
+```{r}
+# Choose observations for the months that begin each quarter
+m2 %<>% filter(month(Date) %in% c(1,4,7,10))
+```
+
+Now let's merge all the variables into one dataset. Note that m2 data goes all the way to January 2021 but the GDP and gov data only goes to October 2020. So we cannot just bind them together:
+
+```{r}
+q3.df <- merge(gdp, m2, by = c('Date')) %>%
+  merge(gov, by = c('Date'))
+head(q3.df, 10)
+```
+
+Now produce growth rates for all three variables. For a variable $X_t$, we'll compute the growth rate $x_t$ using the following transformation:
+
+$$
+x_t = \log(X_t)-\log(X_{t-1})
+$$
+
+```{r}
+q3.df %<>% mutate(Y = log(gdp),
+                  M = log(m2),
+                  G = log(gov),
+                  # Create lagged versions
+                  Y.lag = lag(Y),
+                  M.lag = lag(M),
+                  G.lag = lag(G),
+                  # Create the growth rates
+                  y.growth = Y-Y.lag,
+                  m.growth = M-M.lag,
+                  g.growth = G-G.lag)
+```
+
+An identical way of doing this is:
+
+```{r}
+q3.df %<>% mutate(Y = log(gdp),
+                  M = log(m2),
+                  G = log(gov),
+                  # Create the growth rates by differencing
+                  y.growth = c(NA, diff(Y)),
+                  m.growth = c(NA, diff(M)),
+                  g.growth = c(NA, diff(G)))
+```
+
+Let's add transformations that we'll need for later questions. Doing them here is best because we'll be filtering by Date below and that way we avoid producing unnecessary NAs when we produce lag and differenced terms:
+
+```{r}
+# For part h
+q3.df %<>% mutate(dmg = c(NA, diff(m.growth)),
+                  dgg = c(NA, diff(g.growth)),
+                  dmg1 = lag(dmg),
+                  dgg1 = lag(dgg),
+                  dmg2 = lag(dmg, 2),
+                  dgg2 = lag(dgg, 2),
+                  dmg3 = lag(dmg, 3),
+                  dgg3 = lag(dgg, 3),
+                  # Careful: the last lagged term is the non-differenced fourth lag
+                  mg4 = lag(m.growth, 4),
+                  gg4 = lag(g.growth, 4))
+```
+
+Finally, let's filter to only include dates from 1960q1 to 2019q4
+
+```{r}
+q3.df %<>% filter(Date >= '1960-01-01' & Date <= '2019-10-01')
+```
+
+You can ignore this next chunk, but I will save this as a csv so that I can compare results to Stata. To do what we've just done above in Stata is stupidly inconvenient so I'm processing it in R before exporting it to Stata.
+
+```{r}
+write.csv(q3.df, file = 'q3df.csv')
+```
+
+We want to run a series of distributed lag models using the dependent variable *y.growth*
+
+Need to determine the truncation parameter:
+
+```{r}
+m.trunc <- 0.75*nrow(q3.df)^(1/3)
+m.trunc
+m.trunc <- ceiling(m.trunc)
+```
+
+## Part c: y.growth on m.growth
+
+Then the regression we want to run is
+
+```{r}
+q3c.mod <- lm(y.growth ~ m.growth, q3.df)
+nw.se <- NeweyWest(q3c.mod,
+                   lag = m.trunc,
+                   prewhite = F,
+                   adjust = T)
+coeftest(q3c.mod, vcov = nw.se)
+```
+
+## Part d: y.growth on g.growth
+
+Then the regression we want to run is
+
+```{r}
+q3d.mod <- lm(y.growth ~ g.growth, q3.df)
+nw.se <- NeweyWest(q3d.mod,
+                   lag = m.trunc,
+                   prewhite = F,
+                   adjust = T)
+coeftest(q3d.mod, vcov = nw.se)
+```
+
+## Part e: y.growth on current and next-quarter monetary policy
+
+```{r}
+q3e.mod <- lm(y.growth ~ m.growth + lag(m.growth), q3.df)
+nw.se <- NeweyWest(q3e.mod,
+                   lag = m.trunc,
+                   prewhite = F,
+                   adjust = T)
+coeftest(q3e.mod, vcov = nw.se)
+```
+
+## Part f: y.growth on current and next-quarter fiscal policy
+
+```{r}
+q3f.mod <- lm(y.growth ~ g.growth + lag(g.growth), q3.df)
+nw.se <- NeweyWest(q3f.mod,
+                   lag = m.trunc,
+                   prewhite = F,
+                   adjust = T)
+coeftest(q3f.mod, vcov = nw.se)
+```
+
+
+## Part g: y.growth on the first difference in current and four lags of m.growth and g.growth
+
+Then we'll run the regression with four lags of each of *d.m.growth* and *d.g.growth*:
+
+```{r}
+q3g.mod <- lm(y.growth ~ dmg + dmg1 + dmg2 + dmg3 + mg4 + dgg + dgg1 + dgg2 + dgg3 + gg4,
+              data = q3.df)
+nw.se <- NeweyWest(q3g.mod,
+                   lag = m.trunc,
+                   prewhite = F,
+                   adjust = T)
+test <- coeftest(q3g.mod, vcov = nw.se)
+test
+```
+
+To replicate the given subsample, you'd repeat the above filtering to years before 1981. Supposedly. I wasn't able to replicate those numbers in R nor Stata.
+
+## Part h
+
+Assuming money and government expenditures are exogenous, the coefficients estimated represent the (monetary/fiscal) cumulative multipliers. If you differenced them out, they would represent the dynamic multipliers:
+
+```{r}
+multipliers <- data.frame(lags = 0:4,
+                          m.cum.mult = test[2:6],
+                          f.cum.mult = test[7:11]) %>%
+  mutate(m.dyn.mult = c(test[2], diff(test[2:6])),
+         f.dyn.mult = c(test[7], diff(test[7:11])))
+multipliers
+```
+
+## Part i
+
+```{r}
+ggplot(multipliers, aes(x = lags)) +
+  theme_bw() +
+  geom_line(aes(y = m.cum.mult), col = 'red') +
+  geom_line(aes(y = m.dyn.mult), col = 'blue') +
+  ggtitle('Estimated monetary multipliers') +
+  xlab('Lags') + ylab('')
+
+ggplot(multipliers, aes(x = lags)) +
+  theme_bw() +
+  geom_line(aes(y = f.cum.mult), col = 'red') +
+  geom_line(aes(y = f.dyn.mult), col = 'blue') +
+  ggtitle('Estimated fiscal multipliers') +
+  xlab('Lags') + ylab('')
+```
+
+## Part j
+
+There is little reason to believe that these government instruments are exogenous. Even if the monetary base and those components of government expenditures which do not respond to business cycle fluctuations had been chosen rather than the above regressors, then these instruments respond to changes in the growth rate of GDP. As a matter of fact, government reaction functions were also estimated at the time to capture how government instruments respond to changes in target variables. As a result, the regressors will be correlated with the error term, OLS estimation is inconsistent, and inference not dependable. It is hard to imagine how useable information can be retrieved from these numbers.

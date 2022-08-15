@@ -1,0 +1,305 @@
+---
+title: "Recitation 7 Notes: Binary Dependent Variables in R"
+author: "Matthew Alampay Davis"
+date: "November 23, 2021"
+output:
+  pdf_document: default
+---
+
+```{r, include = F}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Recitation 7')
+library(readstata13)
+library(dplyr)
+library(estimatr)
+library(ggplot2)
+library(magrittr)
+library(car)
+library(lmtest)
+library(pscl)
+library(sandwich)
+library(margins)
+```
+
+For these notes, we'll be using the MROZ.dta file included in my recitation folder:
+
+```{r}
+mroz <- read.dta13('MROZ.dta')
+head(mroz)
+```
+
+The relevant variables in the dataset are:
+
+* inlf: "in the labor force" = 1 if women reports working for a wage outside the home at some point during the year, and zero otherwise
+* educ: Years of education
+* exper: Past years of labor market experience
+* expersq: Experience squared
+* age: Age in years
+* kidslt6: Number of kids younger than six
+* kidsge6: Number of kids between six and 18 years old
+* nwifeinc: Other sources of income including husband’s earnings (in \$1000s)
+
+inlf will be our binary outcome variable of interest as we want to estimate the probability of mothers' labor force participation
+
+# Data manipulation: Summary statistics by subsamples
+
+Given that the outcome variable is a binary between 0 and 1, we can easily compute the proportion of observations that have a 1 by taking their mean:
+
+```{r}
+mean(mroz$inlf)
+```
+
+We can also look at counts through the table command:
+
+```{r}
+mroz$inlf %>% table
+```
+
+And to convert these to proportions,
+
+```{r}
+mroz$inlf %>% table %>% prop.table
+```
+
+This gives us the overall proportions, but suppose we also want to get the proportions when splitting by some other variable or condition. Say we want the counts and proportions of mothers' labor force participation split by whether the mother is below or above 45 years old. We can use the filter function to subset:
+
+```{r}
+filter(mroz, age >= 45)$inlf %>% table %>% prop.table
+filter(mroz, age < 45)$inlf %>% table %>% prop.table
+```
+
+Or equivalently we can do the following using dplyr's group_by argument we learned last week:
+
+```{r}
+mroz %>% group_by(age >=45) %>%
+  summarize(rate = mean(inlf))
+```
+
+# Implementing linear probability models, probit models, and logit models
+
+Suppose we wanted to regress inlf on nwifeinc, educ, exper, expersq, age, kidslt6, and kidsge6 through these three models.
+
+The linear probability model is straightforward: it's just the same as running standard OLS with/without robust standard errors:
+
+```{r}
+mod.lpm <- lm_robust(inlf ~ nwifeinc + educ + exper + expersq + age + kidslt6 + kidsge6,
+                     mroz, se_type = 'stata')
+summary(mod.lpm)
+```
+
+Running the same regression by probit or logit requires a new function called 'glm' that comes in-built in R so no new packages needed. Pay attention to each argument used here:
+
+Probit model:
+
+```{r}
+mod.probit <- glm(inlf ~ nwifeinc + educ + exper + expersq + age + kidslt6 + kidsge6,
+                     mroz, family = binomial(link = 'probit'))
+mod.logit <- glm(inlf ~ nwifeinc + educ + exper + expersq + age + kidslt6 + kidsge6,
+                     mroz, family = binomial(link = 'logit'))
+```
+
+Before displaying the regression results, notice the additional argument here: family = binomial(link = 'logit'), obviously a bit more difficult to memorize. The reason is that glm is a function that can estimate a wide range of linear models (in fact, the g stands for general). The 'binomial' part is specifying that our outcome variable is binary and the link argument is telling us which binomial model to use. Probit and logit are the most common ones in this category.
+
+Notice we have not specified what type of standard errors to use. We will do this when we display the regression results instead and we refrain from using the summary command to do so, instead using the 'coeftest' command from the *lmtest* package:
+
+```{r}
+coeftest(mod.probit, type = 'HC1')
+coeftest(mod.logit, type = 'HC1')
+```
+'HC1' refers to the heteroskedasticity-robust standard errors we've been using all semester, namely the ones that come from Stata. In fact, you can use "se_type = 'HC1'" as an argument in lm_robust in place of "se_type = 'stata'" and you'll get the same thing.
+
+# Creating predictions
+
+We now have three regression models with which we can generate predicted values for any parametrization of the regressors. Suppose we're interested in the predicted labor force participation of a hypothetical mother with median values for all the regressors, which is to say we have an imaginary mother who has the median level of education, experience, age, number of kids younger than six, number of kids between six and 18, and other sources of income. We can generate such an observation by running the following:
+
+```{r}
+median.mother <- summarize_all(mroz, .funs = c('median'))
+median.mother
+```
+
+
+We can use all three regression models to create a prediction for this hypothetical person's probability of participating in the labor force using the 'predict' command:
+
+```{r}
+predict(mod.lpm, newdata = median.mother)
+predict(mod.logit, newdata = median.mother, type = 'response')
+predict(mod.probit, newdata = median.mother, type = 'response')
+```
+
+Encouragingly, these predictions are pretty close to one another, the logit and probit models especially as will usually be the case. Note that when we create predictions using the logit and probit models, we want to specify type = 'response'. This is because the coefficients that come out of these non-linear regressions must be transformed before they can be directly interpreted in terms of the units of the response/outcome variable. See the lecture notes and textbook for more on interpreting coefficients in a logit or probit model, it is a very plausible exam-type question.
+
+Suppose we have new data on a new mother named Emily with the following profile:
+
+* educ: 16
+* exper: 4
+* expersq: $4^2$
+* age: 26
+* kidslt6: 0
+* kidsge6: 0
+* nwifeinc: 0
+
+And now suppose we were interested in the change in the predicted probability of participating labor force if Emily had a two-year-old child. We could input the two cases in the following way:
+
+```{r}
+cases <- data.frame(educ = c(16,16),
+                    exper = c(4,4),
+                    expersq = c(4^2,4^2),
+                    age = c(26, 26),
+                    kidslt6 = c(0,1), # the only difference
+                    kidsge6 = c(0,0),
+                    nwifeinc = c(0,0))
+cases
+```
+
+Then we could compute predictions for the two versions of Emily for each model
+
+```{r}
+# LPM
+pred.lpm <- predict(mod.lpm, cases)
+pred.lpm
+
+# Probit
+pred.probit <- predict(mod.probit, cases, type = 'response')
+pred.probit
+
+# Logit
+pred.logit <- predict(mod.logit, cases, type = 'response')
+pred.logit
+```
+
+Since there are only two cases we're comparing, we can easily take their differences:
+
+```{r}
+# LPM
+diff(pred.lpm)
+# Probit
+diff(pred.probit)
+# Logit
+diff(pred.logit)
+```
+
+The findings here suggest that someone with Emily's profile having one child younger than age 6 decreases the predicted probability of participating in the labor force by between 18.9-26.2 percentage points from a base probability of about 92-93\%.
+
+# Statistics for logit/probit models
+
+## The Pseudo-$R^2$
+
+To get pseudo-$R^2$'s for the probit or logit models, we'll need the aptly named 'pR2' function from the *pscl* package
+
+```{r}
+require(pscl)
+pR2(mod.logit)
+```
+
+The statistic we want is the McFadden one.
+
+Alternatively, we can use the following equivalent formula:
+
+```{r}
+1-mod.logit$deviance/mod.logit$null.deviance
+```
+
+## Confidence intervals
+
+For the LPM, this is straightforward:
+
+```{r}
+confint(mod.probit, level = 0.99)
+```
+
+For the logit/probit models, marginal effects will vary depending on the values of the regressors since they are non-linear models. We will require the 'sandwich' package to select the type of standard errors we want ('HC1') and the 'margins' package to evaluate emarginal effects at particular values. Here, we'll compute marginal effects at median values since we've already created the profile of the hypothetical median mother above.
+
+```{r}
+# Standard errors
+require(sandwich)
+logit.se <- vcovHC(mod.logit, type = 'HC1')
+probit.se <- vcovHC(mod.probit, type = 'HC1')
+
+# Compute marginal effects at median values
+require(margins)
+margins(mod.logit,
+        data = median.mother,
+        vcov = logit.se) %>%
+  summary
+```
+
+The 'lower' and 'upper' columns here match Stata's confidnece intervals (i.e., at the 95\% level)
+
+# Evaluating the models
+
+For each observation in our dataset, we can use the estimated regressions to produce fitted values or predictions given the profile given. We can call these directly from the model object.
+
+For the linear probability model, we might be interested in seeing how many fitted values are contained within the probability bounds [0,1]. Let's plot these:
+
+```{r}
+fit.lpm <- data.frame(y.hat = mod.lpm$fitted.values)
+fit.probit <- data.frame(y.hat = mod.probit$fitted.values)
+fit.logit <- data.frame(y.hat = mod.logit$fitted.values)
+
+ggplot(fit.lpm, aes(x = y.hat)) +
+  geom_histogram() + # Plot a histogram
+  theme_minimal() + # Optional aesthetic theme
+  ggtitle('Distribution of fitted values (LPM)') +
+  ylab('Count') +
+  xlab('Fitted predicted probability') +
+  geom_vline(xintercept = 0, col = 'red') +
+  geom_vline(xintercept = 1, col = 'red')
+```
+
+As we can see, there are quite a few predicted probabilities that don't make real sense in the sense that they aren't within [0,1]. This is a limitation of the LPM and in general we're OK with using LPM as long as not too many observations lie outside the bounds of the red lines. We can see how many do:
+
+```{r}
+table(mod.lpm$fitted.values < 0 | mod.lpm$fitted.values > 1)
+```
+
+33 out of 753 observations have a nonsensical predicted probability (the | bar means OR). In percentages:
+
+```{r}
+table(mod.lpm$fitted.values < 0 | mod.lpm$fitted.values > 1) %>%
+  prop.table
+```
+
+4.4\% of the fitted values are nonsensical. An exam question might ask you whether this is enough to dismiss the linear probability model. Obviously, the probit and logit models by construction will have zero such observations:
+
+```{r}
+table(mod.probit$fitted.values < 0 | mod.probit$fitted.values > 1)
+table(mod.logit$fitted.values < 0 | mod.logit$fitted.values > 1)
+```
+
+We can also evaluate these models by how many predictions are 'correct' in the sense of whether all predicted probabilities > 0.5 correspond to a true value of 1 and all predicted probabilities < 0.5 correspond to a true value of 0. Many ways of doing this, here's one using the fact that numbers below 0.5 will round to 0 while those above will round to 1:
+
+LPM:
+
+```{r}
+table(round(mod.lpm$fitted.values), mroz$inlf) %>%
+  prop.table
+```
+
+The 0,0 and 1,1 cells are correct predictions, the other cells are incorrect. We can sum the diagonals to get the proportion correctly predicted:
+
+```{r}
+table(round(mod.lpm$fitted.values), mroz$inlf) %>%
+  prop.table %>%
+  diag %>%
+  sum
+```
+
+
+Probit:
+
+```{r}
+table(round(mod.probit$fitted.values), mroz$inlf) %>%
+  prop.table %>%
+  diag %>%
+  sum
+```
+
+Logit:
+
+```{r}
+table(round(mod.logit$fitted.values), mroz$inlf) %>%
+  prop.table %>%
+  diag %>%
+  sum
+```
+
+By this measure, the LPM and probit models correctly classified the same number of observations: 73.4\%. The logit model did only a tiny bit better: 73.6\%.

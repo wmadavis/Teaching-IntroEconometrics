@@ -1,0 +1,230 @@
+---
+title: "PS5 R Solutions"
+author: "Matthew Alampay Davis"
+date: "November 23, 2021"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r, include = FALSE}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Pset R Solutions')
+library(readstata13)
+library(dplyr)
+library(estimatr)
+library(ggplot2)
+library(magrittr)
+library(car)
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+# Question 1 #
+
+```{r}
+rental <- read.dta13('rental.dta')
+```
+
+## Part a: Estimate the equation by pooled OLS and report the results in standard form. Whatdo you make of the estimate on the 1990 dummy variable? 
+
+```{r}
+mod.pool <- lm(lrent ~ y90 + lpop + lavginc + pctstu, rental)
+summary(mod.pool)
+```
+
+The positive and very significant coefficient on y90 simply means that, other things in the equation fixed, nominal rents grew by over 26\% over the 10-year period.
+
+## Part b: Interpret the sample coefficient of pctstu
+
+The coefficient on pctstu means that a one percentage point increase in pctstu increases rent by half a percent (.5\%). The t statistic of five shows that, at least based on the usual analysis, pctstu is very statistically significant.
+
+## Part c: Are the standard errors you report in part (a) valid? Explain.
+
+The standard errors from part (i) are not valid, unless we think ai does not really appear in the equation. If ai is in the error term, the errors across the two time periods for each city are positively correlated, and this invalidates the usual OLS standard errors and t statistics.
+
+## Part d: Now, difference the equation and estimate by OLS. Compare your estimate of $\beta_3$ with that of part (a). Does the relative size of the student population appear to affect rental prices? 
+
+```{r}
+# rental %<>% group_by(city) %>%
+#   mutate(rent.diff = diff(lrent),
+#          pop.diff = diff(lpop),
+#          inc.diff = diff(lavginc),
+#          pct.diff = diff(pctstu))
+rental %<>% group_by(city) %>%
+  mutate(rent.diff = lrent - lag(lrent),
+         pop.diff = lpop-lag(lpop),
+         inc.diff = lavginc - lag(lavginc),
+         pct.diff = pctstu - lag(pctstu))
+mod.diff <- lm(rent.diff ~ pop.diff + inc.diff + pct.diff, rental)
+summary(mod.diff)
+```
+
+Interestingly, the effect of pctstu is over twice as large as we estimated in the pooled OLS equation. Now, a one percentage point increase in pctstu is estimated to increase rental rates by about 1.1\%. Not surprisingly, we obtain a much less precise estimate when we difference (although the OLS standard errors from part (i) are likely to be much too small because of the positive serial correlation in the errors within each city). While we have differenced away the individual fixed effe, there may be other unobservables that change over time and are correlated with diff-pctstu.
+
+
+## Part e: Obtain the heteroskedasticity-robust standard errors for the first-differenced equation in part (d) 
+
+```{r}
+mod.diff.hetero <- lm_robust(rent.diff ~ pop.diff + inc.diff + pct.diff, rental,
+                             se_type = 'stata')
+summary(mod.diff.hetero)
+```
+
+
+The heteroskedasticity-robust standard error on pctstu is about .0029, which is actually much smaller than the usual OLS standard error (0.0041). This only makes pctstu even more significant (robust t statistic of roughly 4). Note that serial correlation is no longer an issue because we have no time component in the first-differenced equation.
+
+## Part f: Estimate the model by fixed effects to verify that you get identical estimates and standard errors to those in part (d) (use areg and xtreg commands and report both results) 
+
+```{r}
+mod.fe <- lm_robust(lrent ~ y90 + lpop + lavginc + pctstu, rental,
+                        fixed_effects = city, se_type = 'stata')
+summary(mod.fe)
+```
+
+Matt: Stata's areg and xtreg actually don't seem to produce the same standard errors according to the official solutions. The command above gives equivalent SEs to the areg implementation of fixed effects.
+
+# Question 2
+
+```{r}
+murder <- read.dta13('murder.dta')
+```
+
+## Part a: Consider the unobserved effects model where $\eta_t$ simply denotes different year intercepts and ai is the unobserved state effect. If past executions of convicted murderers have a deterrent effect, what should be the sign of $\beta_1$? What sign do you think $\beta_2$ should have? Explain.  
+
+If there is a deterrent effect, then $\beta_1<0$. The sign of $\beta_2$ is not entirely obvious, although one possibility is that a better economy means less crime in general, including violent crime (such as drug dealing) that would lead to fewer murders. This would imply $\beta_2>0$.
+
+## Part b: Using just the years 1990 and 1993, estimate the equation from part (i) by pooled OLS. Ignore the serial correlation problem in the composite errors. Do you find any evidence for a deterrent effect?
+
+```{r}
+murder.90s <- filter(murder, year %in% c(90,93))
+mod.90s <- lm(mrdrte ~ d90 + d93 + exec + unem, murder.90s)
+summary(mod.90s)
+```
+
+There is no evidence of a deterrent effect, as the coefficient on exec is actually positive (though not statistically significant).
+
+## Part c: Now, using 1990 and 1993, estimate the equation by fixed effects. You may use first differencing since you are only using two years of data. Is there evidence of a deterrent effect? How strong?  
+
+```{r}
+mod.90s.fe <- lm_robust(mrdrte ~ d93 + exec + unem, murder.90s,
+                        fixed_effects = id, se_type = 'stata')
+summary(mod.90s.fe)
+```
+
+Or by first differencing (note use of non-robust standard errors to match solutions):
+
+```{r}
+murder.90s %<>% group_by(id) %>%
+  mutate(murder.diff = mrdrte-lag(mrdrte),
+         exec.diff = exec-lag(exec),
+         unem.diff = unem - lag(unem))
+mod.diff <- lm(murder.diff ~ exec.diff + unem.diff, murder.90s)
+summary(mod.diff)
+```
+
+Now, there is a statistically significant deterrent effect: 10 more executions is estimated to reduce the murder rate by 1.04, or one murder per 100,000 people. Is this a large effect? Executions are relatively rare in most states, but murder rates are relatively low on average, too. In 1993, the average murder rate was about 8.7; a reduction of one would be nontrivial. For the (unknown) people whose lives might be saved via a deterrent effect, it would seem important.
+
+## Part d: Compute the heteroskedasticity-robust standard error for the estimation in part (ii)
+
+The heteroskedasticity-robust standard error for exec is .017. Somewhat surprisingly, this is well below the non-robust standard error. If we use the robust standard error, the statistical evidence for the deterrent effect is quite strong (roughly t=-6.1). See also Computer Exercise 13.12.
+
+## Part e: Find the state that has the largest number for the execution variable in 1993. (The variable exec is total executions in 1991, 1992, and 1993.) How much bigger is this value than the next highest value?  
+
+```{r}
+murder.90s %>% filter(year == 93) %>%
+  arrange(-exec) %>%
+  head
+```
+
+
+Texas had by far the largest value of exec, 34. The next highest state was Virginia, with 11. These are three-year totals.
+
+## Part f: Estimate the equation using first differencing, dropping Texas from the analysis. Compute the usual and heteroskedasticity-robust standard errors. Now, what do you find? What is going on?  
+
+```{r}
+mod.diff.notexas <- lm(murder.diff ~ exec.diff + unem.diff,
+                       filter(murder.90s, id != 'TX'))
+summary(mod.diff.notexas)
+```
+
+Now the estimated deterrent effect is smaller. Perhaps more importantly, the standard error on exec has increased by a substantial amount. This happens because when we drop Texas, we lose much of the variation in the key explanatory variable, exec.
+
+## Part g: Use all three years of data and estimate the model by fixed effects. Include Texas in the analysis. Discuss the size and statistical significance of the deterrent effect comparedwith only using 1990 and 1993.
+
+```{r}
+mod.fe <- lm_robust(mrdrte ~ exec + unem, murder,
+                    fixed_effects = ~ id + year, se_type = 'stata')
+summary(mod.fe)
+```
+The size of the deterrent effect is actually slightly larger than when 1987 is not used. However, the coefficient is not significant. Thus, while the magnitude of the effect is similar, the statistical significance is not. It is somewhat odd that adding another year of data causes the standard error on the exec coefficient to increase nontrivially.
+
+Matt: the standard errors here are different from what are in the Stata solutions because they apparently did not use robust standard errors. You can recover their standard errors running the following:
+
+```{r}
+summary(lm(mrdrte ~ exec + unem + factor(year) + factor(id), murder))
+```
+
+# Question 3 #
+
+```{r}
+pension <- read.dta13('pension.dta')
+```
+
+## Part a: Ignoring the clustering by family, use OLS to estimate the model where the variables are defined in the data set. The variable of most interest is choice, which is a dummy variable equal to one if the worker has a choice in how to allocate pension funds among different investments. What is the estimated effect of choice? Is it statistically significant? 
+
+```{r}
+mod.ols <- lm(pctstck ~ choice + prftshr + female + age + educ + finc25 + finc35 + finc50 + finc75 + finc100 + finc101 + wealth89 + stckin89 + irain89,
+                     pension)
+summary(mod.ols)
+```
+
+Investment choice is associated with about 11.7 percentage points more in stocks.
+The t-statistic is 1.88 so it is marginally significant.
+
+## Part b: Are the income, wealth, stock holding, and IRA holding control variables important? Explain.
+
+```{r}
+linearHypothesis(mod.ols, c('finc25 = 0', 'finc35 = 0', 'finc50 = 0',
+                            'finc75 = 0', 'finc100 = 0', 'finc101 = 0',
+                            'wealth89 = 0', 'stckin89 = 0', 'irain89 = 0'))
+```
+
+These variables are not very important. The F test for joint significant is 1.03. With 9 and 179 df, this gives p-value = .42. Plus, when these variables are dropped from the regression, the coefficient on choice only falls to 11.15.
+
+## Part c: Determine how many different families there are in the data set.
+
+```{r}
+length(unique(pension$id))
+```
+
+There are 171 different families in the sample
+
+## Part d: Now, obtain the standard errors for OLS that are robust to cluster correlation within a family. Do they differ much from the usual OLS standard errors? Are you surprised? 
+
+```{r}
+mod.ols.cluster <- lm_robust(pctstck ~ choice + prftshr + female + age + educ + finc25 + finc35 + finc50 + finc75 + finc100 + finc101 + wealth89 + stckin89 + irain89,
+                     pension, clusters = id, se_type = 'stata')
+summary(mod.ols.cluster)
+```
+
+The instructor reported only the cluster-robust standard error for choice: 6.20. Therefore, it is essentially the same as the usual OLS standard error. This is not very surprising, because at least 171 of the 194 observations can be assumed independent of one another. The explanatory variables may adequately capture the within-family correlation.
+
+## Part e: Estimate the equation by differencing across only the spouses within a family. Why do the explanatory variables asked about in part (ii) drop out in the first-differenced estimation?  
+
+```{r}
+pension %<>% group_by(id) %>%
+  mutate(pctstck.diff = pctstck-lag(pctstck),
+         choice.diff = choice - lag(choice),
+         prftshr.diff = prftshr-lag(prftshr),
+         female.diff = female - lag(female),
+         age.diff = age - lag(age),
+         educ.diff = educ-lag(educ))
+mod.diff <- lm(pctstck.diff ~ choice.diff + prftshr.diff + female.diff + age.diff + educ.diff,
+               pension)
+summary(mod.diff)
+```
+
+All of the income and wealth variables, and the stock and IRA indicators, drop out, as these are defined at the family level (and therefore are the same for the husband and wife)
+
+## Part f: Are any of the remaining explanatory variables in part (v) significant? Are you surprised?
+
+None of the explanatory variables is significant in part (v), and this is not too surprising. We have only 23 observations, and we are removing much of the variation in the explanatory variables (except the gender variable) by using within-family differences.

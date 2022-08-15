@@ -1,0 +1,445 @@
+---
+title: "PS3 R Notes and PS3 Practice Problems"
+author: "Matthew Alampay Davis"
+date: "October  12, 2021"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+# The preamble #
+
+```{r}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Recitation 4')
+library(readstata13)
+library(dplyr)
+library(estimatr)
+library(ggplot2)
+library(magrittr)
+library(car)
+```
+
+A couple of things to note here. The chunk above is what we might call the 'preamble', basically just the preliminary stuff we run at the start of a coding script or notebook. These lines run the commands that set the working directory (where to look for files) and loads all the packages we'll use for the R Notebook. The 'setwd()' function is needed for your R environment to know where to look for files you refer to in case your Notebook is saved in a folder different from your default working directory (which should usually be the case). You should run this in the Console panel rather than in the notebook since a Notebook will always use the folder the Notebook is saved to as its working directory. That is to say, 'setwd()' is not needed for your Notebook to be converted to a pdf.
+
+Some of these packages we're loading are ones we've used before: in order, the first few let us load Stata files, manipulate data, and implement robust standard errors in our regression models.
+
+The last two lines are new so install those packages if you haven't already. 'magrittr' (named after the artist Rene Magritte) enables to use 'piping' grammar, useful for easy data manipulation. We'll get to this later. The 'car' package allows us to perform linear hypothesis tests of the type that will be useful in this week's problem set and future ones. So we will use this package whenever we are given a question that asks us to use a regression result to conduct a joint hypothesis test like $H_0: \beta_1 = \beta_2 = 0$ (covered below) or more complicated linear hypotheses like $H_0: \beta_1 = -\beta_2$ or $H_0: \beta_1 = \beta_3$ or even $H_0: \beta_1 = 2\beta_3 + 4\beta_5$ if we wanted (covered in a future recitation). It's pretty flexible.
+
+# Missing data #
+
+Occasionally we'll run into a dataset that is incomplete because it has missing values. One example of this is the in-built *airquality* dataset:
+
+```{r}
+summary(airquality)
+```
+
+Look at the variables *Ozone* and *Solar.R*. The last row says these variables have 37 NA's and 7 NA's respectively. NA is how most coding languages refer to missing data. This means that when we want to compute a statistic of some of that variable, we'll get an error:
+
+```{r}
+mean(airquality$Ozone)
+sd(airquality$Ozone)
+```
+
+There are a couple of ways around this. For statistics like mean, standard deviation, variance, etc., these functions come with an argument that ignores all NA's in the vector we're looking at. *na.rm* is short for "NA remove":
+
+```{r}
+mean(airquality$Ozone, na.rm = TRUE) # make sure to use all caps for TRUE and FALSE
+sd(airquality$Solar.R, na.rm = T) # capital T is shorthand for TRUE, same with F for FALSE
+```
+
+We may want to create an object that is the same as airquality, but with all observations that have an NA for any of the variables gets removed:
+
+```{r}
+complete.airquality <- na.omit(airquality) # Omit all rows with an NA
+summary(complete.airquality)
+```
+
+Notice that the two datasets have different numbers of rows: all the rows with an NA in it have been removed:
+
+```{r}
+nrow(airquality)
+nrow(complete.airquality)
+```
+
+We can also use the familiar *filter* function from the dplyr package to remove all observations that have NAs for a specific variable
+
+```{r}
+# Use filtering to keep only observations for which Solar.R variable is not NA
+airquality2 <- dplyr::filter(airquality, is.na(`Solar.R`)==FALSE)
+summary(airquality2)
+nrow(airquality2)
+```
+
+# Transforming variables #
+
+Now suppose we want to create a new variable in our dataset that is a transformation of an already existing one. Using the airquality dataset again, suppose we want to create a variable for the logarithm of the temperature. We know one way of doing this already:
+
+```{r}
+airquality$logtemperature <- log(airquality$Temp)
+head(airquality)
+```
+
+But suppose you wanted to make several new variables quickly. Here's one way using the 'mutate' function, also stemming from the dplyr package:
+
+```{r}
+complete.airquality <- mutate(complete.airquality,
+                              logtemperature = log(Temp),
+                              logwind = log(Wind),
+                              Ozonemonth = Ozone*Month,
+                              Country = 'United States',
+                              tempwind = logtemperature/logwind)
+head(airquality)
+```
+
+The first argument is the dataset we want to 'mutate' and every ensuing argument follows the familiar format of "name of new variable = some function of existing variables". Now we have a bunch of different variables defined accordingly. I don't think log temperature divided by log wind really means anything but that's just there to show you how flexible this command is.
+
+# Pulling regression results
+
+Let's run a maybe meaningless regression: Ozone regressed on logtemperature and logwind on the subset of airquality with no NAs:
+
+```{r}
+air.model <- lm_robust(Ozone ~ logtemperature + logwind, data = complete.airquality, se_type = 'stata')
+summary(air.model)
+```
+
+Sometimes we'll want to refer to the coefficient estimate, t-statistic, or p-value associated with one of the regressors. We've done something like this before, but here's an easy way to isolate specific ones:
+
+```{r}
+air.model$coefficients['logtemperature']
+air.model$std.error['logwind']
+air.model$statistic['(Intercept)']
+air.model$fstatistic
+```
+
+# Residuals
+
+lm_robust objects apparently are incapable of letting you pull residuals directly. Our options are usually to pull them from an equivalent non-robust lm model object or to produce them ourselves as the difference between true and predicted values. Here's an example using the same complete dataset:
+
+```{r}
+complete.airquality <- mutate(complete.airquality,
+                              ozone.predictions = air.model$fitted.values,
+                              residuals = Ozone-ozone.predictions)
+head(airquality)
+```
+
+# Root Mean Squared Error
+
+Similarly, lm_robust models do not report the RMSE in their output. The RMSE is independent of the robust standard errors you use since coefficient estimates are independent of the standard errors you use, which means predicted/fitted values will be exactly the same, which means residuals will be exactly the same. All this is to say, we can use the non-robust lm model to figure out the RMSE.
+
+T produce the RMSE, you can just extract the residuals from the non-robust model and then calculate them that way. For example, using our air.model defined above:
+
+```{r}
+air.model2 <- lm(Ozone ~ logtemperature + logwind, data = complete.airquality) # a non-robust lm object
+summary(air.model2)
+```
+
+You'll notice a statistic here in the third-to-last line called the "Residual standard error". This is just what R calls the RMSE. To pull it you can just run the following command:
+
+```{r}
+sigma(air.model2)
+```
+
+If you wanted to compute it manually (maybe as a sanity check), we'd need to account for degrees of freedom:
+
+```{r}
+sqrt(sum(air.model2$residuals^2)/df.residual(air.model2))
+```
+
+# Joint hypothesis tests
+
+We know how to conduct tests of significance for individual coefficients: just look at the t-statistic or p-value or confidence interval for a particular regressor. We'll also be interested in joint hypothesis tests, which test hypotheses of the following variety:
+
+$$
+\begin{aligned}
+H_0: &\ \beta_1 = \beta_2 = \beta_3 = 0\\
+H_1: &\ \text{At least one of these coefficients is non-zero}
+\end{aligned}
+$$
+
+It'll come up in this week's problem set and definitely several future ones as well so do install the *car* package. In particular, we'll want to use the function *linearHypothesis*.
+
+Suppose we wanted to test whether logtemperature and logwind are jointly significant as regressors in the above regression. We'd implement that as follows:
+
+```{r}
+linearHypothesis(air.model, c('logtemperature = 0', 'logwind = 0'))
+```
+
+This gives us a Chi-squared statistic of 165.73 with 113 degrees of freedom and a p-value very close to zero.
+
+We can also specify it to conduct an F-test instead:
+
+```{r}
+linearHypothesis(air.model, c('logtemperature = 0', 'logwind = 0'), test = 'F')
+```
+
+which gives us an F-statistic of 82.865. These are still equivalent tests as you can tell from both tests producing the exact same p-value.
+
+Finally, we might have a model that assumes homoskedastic errors:
+
+```{r}
+air.model2 <- lm(Ozone ~ logtemperature + logwind, data = complete.airquality)
+```
+
+This will give us non robust standard errors and the test statistics will come out slightly different:
+
+```{r}
+linearHypothesis(air.model2, c('logtemperature = 0', 'logwind = 0'), test = 'F')
+```
+
+The F-statistic is slightly different (though not that different). If we wanted to recover the original result, we could just add another argument to the linearHypothesis function to tell it to use the robust standard errors (i.e. HC1, White-adjusted standard errors):
+
+```{r}
+linearHypothesis(air.model2, c('logtemperature = 0', 'logwind = 0'), white.adjust = 'hc1')
+```
+
+HC1 is the technical name of the standard errors Stata uses. You can even use se_type='HC1' instead of se_type='stata' as an argument in our lm_robust command, they'll come out the same.
+
+It should then be straightforward to extend this exercise if you want to jointly test even more variables: just add them to the vector of equations in the linearHypothesis function.
+
+# Non-Practice Problem: Stock-Watson Empirical Exercise 5.1
+
+```{r}
+earnings <- read.dta13('Earnings_and_Height.dta')
+summary(earnings)
+summary(earnings$sex)
+```
+
+The sex variable is in an inconvenient form so let's just make it a binary 0 and 1, where 1 indicates a male observation:
+
+```{r}
+earnings$sex <- earnings$sex=='1:male'
+summary(earnings$sex)
+```
+
+The logic in the first line here is that the right-hand side of the assignment is a statement. If an observation for sex was equal to ("==") the character string '1:male', the statement is "TRUE" which is coded as a 1 in most programming languages (including Stata and R). Otherwise, it is given a 0.
+
+
+## Part a: Regress earnings on height
+
+```{r}
+all.mod <- lm_robust(earnings ~ height, data = earnings, se_type = 'stata')
+summary(all.mod)
+```
+
+The p-value on the height variable is 1.478e-44 (which means $1.478 \times 10^{-44}$), which we may just as well consider zero. This slope coefficient is thus statistically significant at any meaningful power level.
+
+This regression output also gives you the 95% confidence interval by default: 608.9 to 806.5. If we wanted to, we could also compute the confidence interval for any degree of confidence. For example, 99%:
+
+```{r}
+confint(all.mod, level = 0.99)
+```
+
+## Part b: Same regression but on the subsample for women
+
+```{r}
+women.mod <- lm_robust(earnings ~ height,
+                       data = filter(earnings, sex ==0),
+                       se_type = 'stata')
+summary(women.mod)
+```
+
+Again, the p-value is pretty much zero so the relationship is statistically significant. The confidence interval is now 319.9-702.5
+
+## Part c: Same regression but on the subsample for men
+
+```{r}
+men.mod <- lm_robust(earnings ~ height,
+                       data = filter(earnings, sex == 1),
+                       se_type = 'stata')
+summary(men.mod)
+```
+
+Again, the p-value is pretty much zero so the relationship is statistically significant. The confidence interval is now 1113-1501.
+
+## Part d: Test the null hypothesis that the effect of height on earnings is the same for men and women
+
+See iPad notes
+
+
+# Practice Problem 1: Stock-Watson Empirical Exercise 5.2
+
+```{r}
+growth <- read.dta13('Growth.dta')
+growth.model <- lm_robust(growth ~ tradeshare,
+                          data = filter(growth, tradeshare < 1.5),
+                          se_type = 'stata')
+summary(growth.model)
+```
+
+## Part a ##
+
+The p-value on tradeshare is 0.0567. This measn we can reject the null hypothesis $H_0:\beta_1=0$ vs. a two-sided alternative hypothesis at the 10\% level, but not at either a 5\% or 1\% significance level, at least using robust standard errors.
+
+## Part b ##
+
+The p-value associated with the coefficient's $t$-statistic is 0.0567, as mentioned above.
+
+## Part c ##
+
+```{r}
+confint(growth.model, level = 0.9)
+```
+
+The 90\% confidence interval is reported in the regression output is (0.235, 3.13)
+
+# Practice Problem 2: Stock-Watson Empirical Exercise 5.3
+
+```{r}
+smoking <- read.dta13('birthweight_smoking.dta')
+head(smoking)
+```
+
+## Part a
+
+```{r}
+# Part a-i
+mean(smoking$birthweight)
+
+# Part a-ii and a-iii
+# Method 1
+filter(smoking, smoker == 1) %$%
+  birthweight %>%
+  mean
+filter(smoking, smoker == 0) %$%
+  birthweight %>%
+  mean
+# Method 2
+t.test(birthweight ~ smoker, data = smoking)
+```
+
+## Part b
+
+We can use the same t-test function to answer part b-i.
+
+```{r}
+weight.test <- t.test(birthweight ~ smoker, data = smoking)
+# Differences
+diff(weight.test$estimate)
+
+# Standard error of difference
+weight.test$stderr
+
+# 95% confidence interval on differences
+weight.test$conf.int
+```
+
+## Part c
+
+```{r}
+weight.model <- lm_robust(birthweight ~ smoker, data = smoking)
+summary(weight.model)
+```
+
+### Part c-i
+
+The intercept is the average birthweight for non-smokers
+
+The slope is the difference between average birthweights for smokers and non-smokers
+
+### Part c-ii
+
+The standard errors are the same (if we use the robust standard errors)
+
+### Part c-iii
+
+```{r}
+confint(weight.model)
+```
+
+# Practice Problem 3: Stock-Watson Empirical Exercise 6.1 (a,b,d only)
+
+```{r}
+smoking <- read.dta13('birthweight_smoking.dta')
+```
+
+## Part a
+
+```{r}
+birth.model.a <- lm_robust(birthweight ~ smoker, data = smoking, se_type = 'stata')
+summary(birth.model.a)
+```
+The estimated effect of smoking on birthweight is -253.2 grams for every unit increase in the smoker variable
+
+## Part b
+
+```{r}
+birth.model.b <- lm_robust(birthweight ~ smoker + alcohol + nprevist, data = smoking, se_type = 'stata')
+summary(birth.model.b)
+```
+(i) Smoking may be correlated with both alcohol and the number of pre-natal doctor visits, thus satisfying (1) in Key Concept 6.1. Moreover, both alcohol consumption and the number of doctor visits may have their own independent affects on birthweight, thus satisfying (2) in Key Concept 6.1.
+
+(ii) The estimate is somewhat smaller: it has fallen to 217 grams from 253 grams, so the regression in (a) may suffer from omitted variable bias.
+
+
+(iii)
+
+```{r}
+3051.25-217.58*1-30.49*0+34.07*8
+```
+
+(iv) 
+
+```{r}
+birth.model.b$r.squared
+birth.model.b$adj.r.squared
+```
+
+They are nearly identical because the sample size is very large
+
+(v) Nprevist is a control variable. It captures, for example, mother's access to healthcare and health. Because Nprevist is a control variable, its coefficient does not have a causal interpretation.
+
+## Part d
+
+```{r}
+birth.model.d <- lm_robust(birthweight ~ smoker + alcohol + tripre0 + tripre2 + tripre3, data = smoking, se_type = 'stata')
+summary(birth.model.d)
+```
+(i) Tripre1 is omitted to avoid perfect multicollinearity. (Tripre0+ Tripre1+ Tripre2+ Tripre3 = 1, the value of the “constant” regressor that determines the intercept). The regression would not run, or the software will report results from an arbitrary normalization if Tripre0, Tripre1, Tripre2, Tripre3, and the constant term all included in the regression.
+
+(ii) Babies born to women who had no prenatal doctor visits (Tripre0 = 1) had birthweights that on average were 698.0 grams (1.5 lbs) lower than babies from others who saw a doctor during the first trimester (Tripre1 = 1).
+
+(iii) Babies born to women whose first doctor visit was during the second trimester (Tripre2 = 1) had birthweights that on average were 100.8 grams (0.2 lbs) lower than babies from others who saw a doctor during the first trimester (Tripre1 = 1). Babies born to women whose first doctor visit was during the third trimester (Tripre3 = 1) had birthweights that on average were 137 grams (0.3 lbs) lower than babies from others who saw a doctor during the first trimester (Tripre1 = 1).
+
+
+(iv) No. The multiple $R^2$ has decreased from 0.073 to 0.046.
+
+# Practice Problem 4: Stock-Watson Empirical Exercise 6.2
+
+```{r}
+growth <- read.dta13('Growth.dta') %>%
+  filter(tradeshare < 1.5)
+```
+
+## Part a ##
+
+```{r}
+summary(growth)
+```
+
+## Part b ##
+
+```{r}
+growth.model <- lm_robust(growth ~ tradeshare + yearsschool + rev_coups + assasinations + rgdp60, data = growth, se_type = 'stata')
+summary(growth.model)
+```
+The coefficient on Rev_Coups is -2.15. An additional coup in a five year period, reduces the average year growth rate by (2.15/5) = 0.43\% over this 25 year period. This means the GDP in 1995 is expected to be approximately .43 x 25 = 10.75\% lower. This is a large effect.
+
+## Part c ##
+
+Obviously, you can take the mean values from part a and manually multiply them by the regression estimates to produce a prediction. Here's a semi-advanced way of doing that in one line. Don't worry if you don't understand what it's doing, I was just lazy. We'll learn more about the predict function here next week.
+
+```{r}
+mean.vals <- sapply(growth[,-1], FUN = mean, na.rm = T) %>% t %>% data.frame
+predict(growth.model, mean.vals)
+```
+
+## Part d ##
+
+```{r}
+mean.vals$tradeshare <- mean.vals$tradeshare + sd(growth$tradeshare)
+predict(growth.model, data.frame(mean.vals))
+```
+
+## Part e ##
+
+The variable "oil" takes on the value of 0 for all 64 countries in the sample. This would generate perfect multicollinearity since the variable is a linear combination of one of the regressors, namely the constant.

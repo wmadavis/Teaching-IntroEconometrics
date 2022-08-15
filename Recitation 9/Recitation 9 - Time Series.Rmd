@@ -1,0 +1,370 @@
+---
+title: "Recitation 9 Notes: Time Series"
+author: "Matthew Alampay Davis"
+date: "December 12, 2021"
+output:
+  pdf_document: default
+---
+
+```{r, include = F}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Recitation 9')
+library(Quandl)
+library(lubridate)
+library(dplyr)
+library(magrittr)
+library(lmtest)
+library(sandwich)
+library(ggplot2)
+library(readxl)
+library(car)
+lag <- dplyr::lag # Just make sure we're using the right lag function (the one from dplyr)
+```
+
+# Cleaning and manipulating data for time series
+
+Problem Set 8 uses data from the Federal Reserve and we are tasked with cleaning it up a certain way so we can use it for time series regressions. I did the problem set in both R and Stata to prep for this recitation and it's an absolute nightmare to do in Stata (I believe they have you use Excel as an intermediate step because Stata is unintuitive for beginners in this regard).
+
+Fortunately, R is excellent at this. What's more, R also has a package called *Quandl* that lets you download data directly from the Federal Reserve website so do install the *Quandl* package to make your life easier. I would just caution that Quandl limits you to 50 uses per day or else you have to make a (free) account and get your own API key.
+
+## Downloading data from FRED using Quandl
+
+Once you've installed Quandl, you can very easily use it to download data from FRED, the Federal Reserve database. The problem set tells you the ID for each dataset we'll need (GDPC1 for GDP, M2REAL for M2 money, and GCEC1 for government spending). I'll be using different FRED datasets so that you'll have to apply the lessons here to the new ones.
+
+Let's download GDP data, which has the ID "GDP", the consumer price index ("CPIAUCSL"), and the federal funds rate ("FEDFUNDS"), basically an interest rate:
+
+```{r}
+Quandl.api_key('xHu2y3xExQ6bGkGqcYEi') # This is my personal API key
+gdp <- Quandl('FRED/GDP')
+cpi <- Quandl('FRED/CPIAUCSL')
+interest <- Quandl('FRED/FEDFUNDS')
+
+head(gdp)
+head(cpi)
+head(interest)
+```
+
+Let's rename the "Value" columns so we know what they're describing:
+
+```{r}
+names(gdp)[2] <- 'gdp'
+names(cpi)[2] <- 'cpi'
+names(interest)[2] <- 'interest'
+```
+
+## Converting monthly data to quarterly data
+
+Clearly these are all time series. However, the GDP data is quarterly with observations only given on the first day of every quarter: January 1, April 1, July 1, and October 1. The CPI and interest rate are given on a monthly basis. We will want to make sure the frequencies are the same before merging them so this will entail transforming the monthly data to quarterly data.
+
+CPI and interest rates are not stock variables so we are fine using just the first observations of each quarter as representative of the price index and interest rate for that quarter. By contrast, if it had been the other way around with GDP monthly and PCPI and interest rates quarterly and had we been looking to aggregate GDP to the quarterly level, we would want to add the GDP of all three months in the quarter to arrive at quarterly GDP.
+
+So let's take a subset of the CPI and interest-rate series, keeping only the observations for the months that bein each quarter. To do this, we'll want to use the *lubridate* package so install that if you haven't yet. This package is basically the go-to in R for dealing with dates.
+
+```{r}
+cpi %<>% filter(month(Date) %in% c(1,4,7,10))
+interest %<>% filter(month(Date) %in% c(1,4,7,10))
+```
+
+So a few things going on here. We've used the "<>" pipe a few times now but just in case it hasn't caught on, the "<>" pipe in the first like takes the cpi dataset we loaded above and automatically uses it as the first argument in the *filter* function and assigns it whatever the output of that function is. It's just a shorter version of
+
+```{r}
+cpi <- filter(cpi, month(Date) %in% c(1,4,7,10))
+```
+
+Next, the "month(Date)" part makes use of the month function in the lubridate package. It says to look at the Date column in the cpi data, and only keep the observations whose months are "in" the vector (1, 4, 7, 10) (i.e. January, April, July, and October), exactly what we want.
+
+Our CPI and interest-rate data is now effectively quarterly.
+
+## Merging datasets
+
+Now we want to combine our GDP, CPI, and interest rate data into one dataset that we'll call "merged.data". We want to match them by date, which we can do by using the "merge" function:
+
+```{r}
+merged.data <- merge(gdp, cpi, by = 'Date')
+head(merged.data)
+```
+
+So the merge function merges two datasets at a time. The first two arguments are the data objects in the order you want them to appear, and the third argument "by" is the name of the column that both data objects share and that you want to match them by. The result will be the subset of dates that both datasets have in common. If GDP data spanned 1950-1980 and CPI data spanned 1960-1990, then the merged dataset would not include any data from 1950-1959 or 1981-1990.
+
+Of course, we want to also merge in the interest rate data. We can merge the new merged.data object with the cpi object in the exact same way. If we wanted to combine all three datasets in one command we could have run:
+
+```{r}
+merged.data <- merge(gdp, cpi, by = 'Date') %>%
+  merge(interest, by = 'Date')
+head(merged.data)
+```
+
+## Transforming time series data: lags and growth rates
+
+So our merge.data dataset is now one dataset comprised of three time series. Now suppose we wanted to create a couple more time series: GDP growth and inflation, which is the growth rate of the price index. Remember, for a variable $X_t$, we can approximate its growth rate $x_t$ using the following transformation:
+
+$$
+x_t = \log(X_t)-\log(X_{t-1})
+$$
+
+So we'll need the log of each variable, its one-period lag, and to take their differences. Let's use the familiar *mutate* function:
+
+```{r}
+merged.data %<>% mutate(log.y = log(gdp),
+                        lag.y = lag(gdp),
+                        growth = log.y - lag(log.y))
+head(merged.data)
+```
+
+Alternatively:
+
+```{r}
+merged.data %<>% mutate(growth2 = c(NA, diff(log(gdp))))
+head(merged.data)
+```
+
+Here, the *diff* function takes first differences. The result has one observation less than the original time series (since we don't have a previous observation to take differences with for the earliest observation we have) so we must include an NA for it to fit into our dataset. We can see they produce the exact same time series.
+
+As another alternative, we might consider creating a lagged variable first. Let's do this to create the inflation series:
+
+```{r}
+merged.data %<>% mutate(cpi.l1 = lag(cpi),
+                        inflation = 4*(log(cpi)-log(cpi.l1)))
+head(merged.data)
+```
+
+The multiplying by four here converts it to an annualized inflation rate (we could also multiply it by 100 to get it in terms of percentages)
+
+Finally, we may also just want to produce lagged versions of an existing time series or even lagged versions of a differenced time series for distributed lag models for example. Let's do this for the interest rate:
+
+```{r}
+merged.data %<>% mutate(di = c(NA, diff(interest)),
+                        di1 = lag(di),
+                        di2 = lag(di, 2),
+                        di3 = lag(di, 3),
+                        di4 = lag(di, 4),
+                        i5 = lag(interest, 5))
+head(merged.data)
+```
+
+Notice that we're taking the first four lags of the differenced interest rate but the last lag is for the non-differenced interest rate. These are the kinds of transformations you might make in a distributed lag model to estimate dynamic causal effects.
+
+Finally, suppose we're only interested in observations from 1960 to 1989:
+
+```{r}
+merged.data %<>% filter(Date >= '1960-01-01' & Date < '1990-01-01')
+```
+
+## Time series regressions with HAC standard errors
+
+These are very simple in R. All we need is the standard "lm" function, and the "NeweyWest" function from the *sandwich* package. Suppose we wanted to run a model like the following:
+
+$$
+Growth_t = \alpha + \beta_1 Inflation_t + \beta_2 Inflation_{t-1} + \gamma_1 \Delta Interest_t + \gamma_2 \Delta Interest_{t-1} + \gamma_3 \Delta Interest_{t-2} + u_t
+$$
+
+In particular, we are worried about serial correlation in the error term so we want to use Newey-West standard errors. First, we need to compute the lag we want to use according to the truncation rule of thumb in the textbook:
+
+```{r}
+m <- 0.75*nrow(merged.data)^(1/3)
+m
+m <- ceiling(m) # Round up
+```
+
+
+```{r}
+model <- lm(growth ~ inflation + lag(inflation) + di + lag(di) + lag(di, 2), merged.data)
+hac.se <- NeweyWest(model, lag = m, prewhite = F, adjust = T)
+coeftest(model, vcov = hac.se)
+```
+
+It is important to use these exact arguments for prewhite and adjust in the NeweyWest function so that our answers are the same as what would come out of Stata
+
+# Empirical Exercise 16.1
+
+Note that the textbook leads you to the data hosted on the official textbook website. This data does not match what's in the textbook or the solutions! It doesn't even have the variables you need to answer any of these subquestions. I had to find the original dataset on an unofficial website so download it from my recitation folder instead:
+
+```{r}
+macro <- read_xlsx('UsMacro_Monthly.xlsx')
+head(macro)
+```
+
+## Part a: Compute the monthly growth rate in IP, expressed in percentage points. What are the mean and standard deviation of IP growth over the 1960:M1–2017:M12 sample period? What are the units for IP growth (percent, percent per annum, percent per month, or something else)?
+
+```{r}
+macro %<>% mutate(ip.growth = 100*log(IP/lag(IP)))
+macro.sub <- filter(macro, Year >= 1960 & Year <= 2017)
+mean(macro.sub$ip.growth)
+sd(macro.sub$ip.growth)
+```
+
+So we have a mean of about 0.22 and a standard deviation of about 0.75. This is slightly different from the provided solutions because they seem to be using the period 1952-2009 for whatever reason (old edition?) rather than 1960-2017.
+
+## Part b: Plot the value of $O_t$. Why are so many values of $O_t$ equal to 0? Why aren’t some values of $O_t$ negative?
+
+We want to plot the value of oil. Let's create a Date variable that combines the info in Year and Month first:
+
+```{r}
+macro %<>% mutate(Date = as.Date(ISOdate(Year, Month, 1)))
+```
+
+Here, the 1 just tells R to assign it the first day of the month.
+
+Now let's plot the oil time series:
+
+```{r}
+ggplot(macro, aes(x = Date, y = Oil)) +
+  theme_bw() + # A black-and-white theme I like over the gray default
+  geom_line() + # Draw a line graph using Date on the x and Oil on the y
+  xlab('Date') + ggtitle('Time series of O') + ylab('')
+```
+
+From Exercise 16.1, O here is defined as "the greater of 0 or the percentage point difference between oil prices at date t and their maximum value during the past three years." Thus it equals 0 whenever the price of oil is less than the maximum during the previous three years.
+
+## Part c: Estimate a distributed lag model by regressing IP growth onto the current value and 18 lagged values of O, including an intercept. What value of the HAC standard error truncation parameter did you choose? Why?
+
+We are estimating a distributed lag model of IP growth onto the current and 18 lagged values of O.
+
+First, let's calculate the HAC truncation parameter m:
+
+```{r}
+m <-  0.75*nrow(macro)^(1/3)
+m <- ceiling(m)
+```
+
+## Part d: Taken as a group, are the coefficients on O statistically significantly different from 0?
+
+Then the regression:
+
+```{r}
+oil.model <- lm(ip.growth ~ Oil + lag(Oil) + lag(Oil, 2) + lag(Oil, 3) + lag(Oil, 4) +
+                  lag(Oil, 5) + lag(Oil, 6) + lag(Oil, 7) + lag(Oil, 8) + lag(Oil, 9) +
+                  lag(Oil, 10) + lag(Oil, 11) + lag(Oil, 12) + lag(Oil, 13) + lag(Oil, 14) +
+                  lag(Oil, 15) + lag(Oil, 16) + lag(Oil, 17) + lag(Oil, 18),
+                data = macro)
+hac.se <- NeweyWest(oil.model, lag = m, prewhite = F, adjust = T)
+coeftest(oil.model, vcov = hac.se)
+coefci(oil.model, vcov = hac.se)
+```
+
+Since the formula for thie regression is quite long, it's helpful to press enter after every few regressors so it's visible in the output
+
+F test on all oil coefficients:
+
+```{r}
+# Get the names of all the oil coefficients
+oil.names <- names(coef(oil.model))[-1] # All but the intercept
+
+linearHypothesis(oil.model,
+                 oil.names,
+                 test = 'F',
+                 vcov = hac.se)
+```
+
+The F-statistic is 1.74, corresponding to a p-value of 0.02607. This means the joint hypothesis can be rejected at a 1\% level but cannot be rejected at a 5\% level. (Again, this is not how I like to summarize hypothesis tests, but that's how we're taught it in this course)
+
+## Part e: Construct graphs like those in Figure 16.2, showing the estimated dynamic multipliers, cumulative multipliers, and 95% confidence intervals. Comment on the real-world size of the multipliers.
+
+The above model captured non-cumulative effects. Let's collect the coefficient estimates:
+
+```{r}
+# Get the coefficients
+dyna.coef <- coef(oil.model)[-1] # Take out the intercept coefficient
+# Get the confidence intervals for each coefficient
+dyna.ci <- coefci(oil.model, vcov = hac.se)[-1,] # Take out the first row for the intercept coefficient
+
+dyna.multipliers <- data.frame(lags = 0:18,
+                              coef = dyna.coef,
+                              low = dyna.ci[,1],
+                              high = dyna.ci[,2])
+dyna.multipliers
+```
+
+Remember, to capture cumulative effects, we would run a similar same model up to *seventeen* lags of *differenced* Oil values and then include the 18th lag of *non-differenced* Oil. So let's first create the differenced oil time series:
+
+```{r}
+macro %<>% mutate(d.Oil = c(NA, diff(Oil)))
+```
+
+Now run the corresponding regression
+
+```{r}
+cumu.model <- lm(ip.growth ~ d.Oil + lag(d.Oil) + lag(d.Oil, 2) + lag(d.Oil, 3) + lag(d.Oil, 4) +
+                   lag(d.Oil, 5) + lag(d.Oil, 6) + lag(d.Oil, 7) + lag(d.Oil, 8) + lag(d.Oil, 9) +
+                   lag(d.Oil, 10) + lag(d.Oil, 11) + lag(d.Oil, 12) + lag(d.Oil, 13) + lag(d.Oil, 14) +
+                   lag(d.Oil, 15) + lag(d.Oil, 16) + lag(d.Oil, 17) + lag(Oil, 18),
+                 data = macro)
+```
+
+To emphasize again, notice the last term here is the 18th lag of *non-differenced* Oil while all the other oil terms are lagged differenced Oil.
+
+I believe you can also do the last two regressions we've just run very compactly using the dynlm function from the dynlm package (see the econometrics-with-r website for examples), but I am less familar with it so do not know how it interacts with the linearHypothesis function so I left it out for now.
+
+Calculate Newey-West standard errors and display the output:
+
+```{r}
+hac.se <- NeweyWest(cumu.model, lag = m, prewhite = F, adjust = T)
+coeftest(cumu.model, vcov = hac.se)
+```
+
+We interpret these coefficients as cumulative multipliers. Let's plot them by first creating a table of these coefficients:
+
+```{r}
+# Get the coefficients
+cumu.coef <- coef(cumu.model)[-1] # Take out the intercept coefficient
+
+# Get the confidence intervals for each coefficient
+cumu.ci <- coefci(cumu.model, vcov = hac.se)[-1,] # Take out the first row for the intercept coefficient
+
+cumu.multipliers <- data.frame(lags = 0:18,
+                               coef = cumu.coef,
+                               low = cumu.ci[,1],
+                               high = cumu.ci[,2])
+cumu.multipliers
+```
+
+Now let's plot:
+
+```{r}
+ggplot(cumu.multipliers, aes(x = lags)) +
+  theme_minimal() + # A minimalistic theme to override the default gray plots
+  ggtitle('Cumulative multipliers') +
+  xlab('Lags') + ylab('') +
+  geom_hline(yintercept = 0, color = 'red') + # optional: draw a line at y = 0
+  geom_line(aes(y = coef)) + # Line graph where the y is given by the estimate variable
+  geom_ribbon(aes(ymin = low, ymax = high), alpha = 0.5) # Confidence intervals
+```
+
+*geom_ribbon* here allows us to draw confidence intervals by providing the lower and higher ends. Note we want to set alpha between 0 and 1 so that it's transparent and we can see the line graph.
+
+The cumulative multipliers show a persistent and large decrease in industrial production following an increase in oil prices above their previous 12 month peak price. Specifically a 100\% increase in oil prices is associated with a roughtly 18\% decline in industrial production after 18 months.
+
+Now let's do the dynamic multipliers:
+
+```{r}
+ggplot(dyna.multipliers, aes(x = lags)) +
+  theme_minimal() + # A minimalistic theme to override the default gray plots
+  ggtitle('Dynamic multipliers') +
+  xlab('Lags') + ylab('') +
+  geom_hline(yintercept = 0, color = 'red') + # optional: draw a line at y = 0
+  geom_line(aes(y = coef)) + # Line graph where the y is given by the estimate variable
+  geom_ribbon(aes(ymin = low, ymax = high), alpha = 0.5) # Confidence intervals
+```
+
+You can also plot the cumulative and dynamic multipliers in the same plot. To do so here, let's combine these into one data.frame
+
+```{r}
+dyna.multipliers %<>% mutate(type = 'dynamic')
+cumu.multipliers %<>% mutate(type = 'cumulative')
+multipliers <- rbind(dyna.multipliers, cumu.multipliers)
+multipliers
+```
+
+We added a column here called "type" which tells us what kind of multiplier the row corresponds to. The "rbind" function (short for "row bind"), just stacks one data.frame on top of the other as long as they have the same number of columns.
+
+Now we can plot:
+
+```{r}
+ggplot(multipliers, aes(x = lags, y = coef, ymin = low, ymax = high, color = type, fill = type)) +
+  theme_minimal() +
+  ggtitle('Multipliers') +
+  xlab('Lags') + ylab('') +
+  geom_line() +
+  geom_ribbon(alpha = 0.3) +
+  geom_hline(yintercept = 0, color = 'black') # optional: draw a line at y = 0
+```
+

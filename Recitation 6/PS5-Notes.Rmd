@@ -1,0 +1,195 @@
+---
+title: "PS5 R Notes: Panel Data Models"
+author: "Matthew Alampay Davis"
+date: "November 22, 2021"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r, include = F}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Recitation 6')
+library(readstata13)
+library(dplyr)
+library(estimatr)
+library(ggplot2)
+library(magrittr)
+library(car)
+```
+
+As I mentioned in my note on Ed before going on strike, we will want to do all panel regression modeling with the familiar lm or lm_robust functions from the *estimatr* package.
+
+I think some of you have looked at *plm*, which is a good package and can even handle robust standard errors. However, by default it clusters standard errors to the level of the individual fixed effects. In general, we do want to use clustered standard errors whenever we include fixed effects which is why they've made it automatic, but this problem set does ask us to implement fixed effects and clustering independent of one another so as far as I know, it cannot be used. Further, lm_robust is compatible with the linearHypothesis function from the *car* package when we run F-tests for a subset of covariates.
+
+If I were designing this course myself or helping any of you with your own research, I would introduce you guys to the *fixest* package since it's just as easy to pick up on and is also the most advanced package in any software for running more demanding fixed effects models. But for now, let's stick with *estimatr*.
+
+For the purposes of these notes, I'll be using the following panel dataset, available in my recitation folder:
+
+```{r}
+guns <- read.dta13('handguns.dta') %>%
+  mutate(lvio = log(vio),
+         lrob = log(rob),
+         lmur = log(mur))
+head(guns)
+```
+
+Here, the "entities" are US states plus DC and the time variable is the year ranging from 1977-1999. These variables are log transformations of rates of gun-related violence, robbery, and murder. Here's the given setup:
+
+Some U.S. states have enacted laws that allow citizens to carry concealed weapons. These laws are known as “shall-issue” laws because they instruct local authorities to issue a concealed weapons permit to all applicants who are citizens, mentally competent, and have not been convicted of a felony (some states have some additional restrictions). Proponents argue that, if more people carry concealed weapons, crime will decline because criminals are deterred. Opponents argue that crime will increase because of accidental or spontaneous use of the weapon. In this exercise, you will analyze the effect of concealed weapons laws on three different categories of crimes: violent crimes; robberies (such as the robbery of a convenience store); and murder (many of which are spontaneous acts of passion).
+
+# Some data manipulation
+
+We've already manipulated the data a little bit to get some variables log-transformed. We can do some more:
+
+## Sorting
+
+If we want to sort our dataset according to a variable of interest, all we need is the dplyr package to run the following:
+
+```{r}
+require(dplyr)
+guns %>% arrange(vio) %>%
+  head()
+```
+
+The state with the fewest violent gun-related crimes is North Dakota in 1985.
+
+```{r}
+guns %>% arrange(-vio) %>%
+  head()
+```
+
+While Washington DC in 1993 has the most.
+
+## Grouping
+
+Suppose we want to look at state averages in the dataset. We'll want to group our observations by state and then take averages. This will give us one observation per state and in so doing transforms it from a panel dataset to a regular cross-sectional dataset:
+
+```{r}
+guns.average <- group_by(guns, state) %>%
+  summarise(mean.violent = mean(vio),
+            mean.murder = mean(mur),
+            mean.robbery = mean(rob))
+arrange(guns.average, -mean.violent) %>% head
+```
+
+## Calling particular observations
+
+Suppose we want to look at a particular state's observation
+
+```{r}
+filter(guns.average, state == 'Maryland')
+```
+
+# Pooled OLS #
+
+Pooled OLS is just what we call OLS estimation on panel data where we do not make use of the panel structure at all and thereby treat all observations as independent regardless of what entity or time value it takes on. So this is just a matter of using our familiar lm/lm_robust command as usual.
+
+Suppose we want to estimate a fixed effects model that regresses log-vio against the variables shall, incarc_rate, density, avginc, pop, pb1064, pm1029, and state and year fixed effects. The pooled OLS estimator for this model would essentially disregard the fixed effects.
+
+```{r}
+model.pool <- lm_robust(lvio ~ shall + incarc_rate + density + avginc +
+                          pop + pb1064 + pw1064 + pm1029, data = guns, se_type = 'stata')
+summary(model.pool)
+```
+
+I believe you can estimate these using either lm or lm_robust (I'm not the grader), but the wording of the questions seems to suggest one over the other depending on the context.
+
+One of the problem set questions asks you about the validity of standard errors on the OLS estimator given a model with a fixed effects term.
+
+# First differences #
+
+A good test of understanding: How is the first differences estimator related to the fixed effects estimator? Under what condition are they the same? I'll let you look back on the textbook or lecture slides to remember but I think it's important to keep in mind as you go through these problem set questions that keep asking you to conduct first difference estimation and then fixed effects estimation.
+
+For now, here's just how to implement it in R. We have several states, each with multiple years of observations. We want to create new variables (the differenced variables) and we already know a function that does this: mutate from the *dplyr* package. We now want to use a new function called lag to pull an earlier observation so we can difference a current observation by a past observation for the same entity.
+
+```{r}
+guns %<>% group_by(state) %>%
+  mutate(diff.lvio = lvio-lag(lvio),
+         diff.shall = shall-lag(shall),
+         diff.incarc_rate = incarc_rate-lag(incarc_rate),
+         diff.density = density-lag(density),
+         diff.avginc = avginc-lag(avginc),
+         diff.pop = pop-lag(pop),
+         diff.pb1064 = pb1064-lag(pb1064),
+         diff.pw1064 = pw1064-lag(pw1064),
+         diff.pm1029 = pm1029-lag(pm1029))
+```
+
+If we have, for example, three years of observations for each state, then our differencing transformation will leave us with only two observations of the differenced variables per state: the difference between year 2 and year 1 and the difference between year 3 and year 2. We do not have year 0 observations so for year 1, the differenced observation will just be an NA:
+
+```{r}
+guns %>% select(year, state, lvio, diff.lvio, shall, diff.shall) %>%
+  filter(year %in% 77:80) %>%
+  head(10)
+```
+
+Then it's just a matter of running the same regression but using the differenced variables rather than the original variables:
+
+```{r}
+mod.diff <- lm_robust(diff.lvio ~ diff.shall + diff.incarc_rate + diff.density + diff.avginc +
+                          diff.pop + diff.pb1064 + diff.pw1064 + diff.pm1029,
+                      data = guns, se_type = 'stata')
+summary(mod.diff)
+```
+
+Notice that the number of observations in the differenced regression are lower than that in the pooled regresson:
+
+```{r}
+mod.diff$nobs
+model.pool$nobs
+```
+
+This is because of the NAs that arise from differencing variables; we're essentially removing one year of data for each entity/state.
+
+A test of understanding: how does the differenced regression account for entity fixed effects $\mu_i$?
+
+# Estimating by fixed effects
+
+This is just a matter of running the same regression as the pooled OLS, but adding a fixed_effects argument to lm_robust
+
+```{r}
+# One-way fixed effects
+model.1fe.robust <- lm_robust(lvio ~ shall + incarc_rate + density + avginc +
+                                pop + pb1064 + pw1064 + pm1029, data = guns,
+                             se_type = 'stata',
+                             fixed_effects = state)
+summary(model.1fe.robust)
+```
+
+Or including the time fixed effects as well:
+
+```{r}
+# Two-way fixed effects
+model.2fe.robust <- lm_robust(lvio ~ shall + incarc_rate + density + avginc +
+                                pop + pb1064 + pw1064 + pm1029, data = guns,
+                             se_type = 'stata',
+                             fixed_effects = ~ state + year)
+summary(model.2fe.robust)
+```
+
+Clearly, we get different estimates depending on which estimation procedure we implement.
+
+There's a question asking Stata users to run both areg and xtreg regressions. Running the appropriate version of the above should be equivalent to both so I think you only need to run one.
+
+We can also implement these without robust standard errors as well using lm and manually adding the fixed effects ourselves.
+
+```{r}
+model.1fe.nonrobust <- lm(lvio ~ shall + incarc_rate + density + avginc +
+                            pop + pb1064 + pw1064 + pm1029 + factor(state), data = guns)
+```
+
+"factor" here just manually creates dummy variables for each state, which is exactly what an state fixed effects model does. Only downside is that the regression output will include coefficients/SEs for each state fixed effect (which can be many).
+
+# Cluster-robust standard errors
+
+lm_robust includes a "clusters" argument:
+
+```{r}
+mod.cluster <- lm_robust(lvio ~ shall + incarc_rate + density + avginc +
+                           pop + pb1064 + pw1064 + pm1029,
+                      clusters = state,
+                      se_type = 'stata',
+                      data = guns)
+```
+
+Note that unlike the plm package, you can indicate clustering and/or fixed effects at the same time or just one without the other.

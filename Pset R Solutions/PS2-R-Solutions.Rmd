@@ -1,0 +1,193 @@
+---
+title: "PS2 R Solutions"
+author: "Matthew Alampay Davis"
+date: "October 11, 2021"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r, include = FALSE}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Recitation 3')
+library(readstata13)
+library(dplyr)
+library(estimatr)
+library(ggplot2)
+library(magrittr)
+library(car)
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+
+# Question 1 #
+
+First, let's replicate the table
+
+```{r}
+cancer <- data.frame(country = c('Switzerland', 'Finland', 'Great Britain', 'Canada', 'Denmark'),
+                     cigarettes = c(530, 1115, 1145, 510, 380),
+                     deaths = c(250, 350, 465, 150, 165))
+cancer # print the table
+```
+
+## 1i)
+
+```{r}
+mean(cancer$cigarettes)
+```
+The sample mean for the number of cigarettes consumed per capita in 1930 is 736
+
+
+```{r}
+mean(cancer$deaths)
+```
+
+The sample mean for the number of lung cancer deaths per million people in 1950 is 276
+
+## 1ii)
+
+```{r}
+sd(cancer$cigarettes)
+```
+
+The sample standard deviation for the number of cigarettes consumed per capita in 1930 is 364
+
+
+```{r}
+sd(cancer$deaths)
+```
+
+The sample standard deviation for the number of lung cancer deaths per million people in 1950 is 132
+
+## 1iii)
+
+```{r}
+cor(cancer$cigarettes, cancer$deaths)
+```
+
+The sample correlation between the two variables is 0.926
+
+## 1iv)
+
+```{r}
+cancer.model <- lm_robust(deaths ~ cigarettes, data = cancer, se_type = 'stata')
+summary(cancer.model)
+```
+The estimated $\hat{\beta}_1$ is 0.336
+
+## 1v)
+
+From the same output, we can see that the estimated$\hat{\beta}_0$ is 28.4
+
+## 1vi)
+
+```{r}
+cancer$predictions <- cancer.model$fitted.values # add a column called 'predictions' to the cancer dataset we created
+cancer$predictions # print the predictions
+```
+
+## 1vii)
+
+```{r}
+cancer$residuals <- cancer$deaths-cancer$predictions
+cancer$residuals
+```
+
+One thing to note here is that lm_robust models don't allow you to directly pull residuals. Instead, we just create them as the difference between the true values and the fitted/predicted values. Alternatively, we could create a non-robust lm model object and use the \$ symbol to pull them:
+
+```{r}
+cancer.model.nonrobust <- lm(deaths ~ cigarettes, data = cancer)
+cancer.model.nonrobust$residuals
+```
+
+They are exactly the same since residuals are invariant to the type of standard error used
+
+# Question 2
+
+```{r}
+cancer.plot <- ggplot(cancer, aes(x = cigarettes, y = deaths)) +
+  theme_bw() +
+  geom_point() +
+  geom_smooth(method = 'lm') + # Can add an 'se = FALSE' argument to remove the confidence interval
+  xlab('Cigarettes consumed per capita in 1930') + ylab('Lung cancer deaths per million people in 1950')
+cancer.plot
+```
+
+The estimated intercept is 28.4, which suggests that the linear model would predict that a country that consumes zero cigarettes in 1930 would have 28.4 lung cancer deaths per million people in 1950.
+
+The slope of the regression is 0.336, which suggests that an increase by one cigarette concsumed per capita in 1930 is associated with an increase in the death rate of 0.336 lung cancer deaths per million in 1950.
+
+# Question 3
+
+## 3(a)
+
+```{r}
+wage <- read.dta13('WAGE.dta')
+head(wage)
+summary(wage)
+```
+The mean value of wage is 957.95 units, its SD = 404.36, with min value of 115 and max value of 3078. Do the same for the other model variables.
+
+## 3(b)
+
+```{r}
+wage.plot.1 <- ggplot(wage, aes(x = educ, y = wage)) +
+  theme_bw() +
+  geom_point()
+
+wage.plot.2 <- ggplot(wage, aes(x = exper, y = wage)) +
+  theme_bw() +
+  geom_point()
+
+wage.plot.3 <- ggplot(wage, aes(x = tenure, y = wage)) +
+  theme_bw() +
+  geom_point()
+
+wage.plot.1
+```
+
+It looks like that as the number of years of education increases, wage tends to increase. It seems that they are possitively correlated, though it is not clear.
+
+```{r}
+wage.plot.2
+```
+
+It looks like that as the number of years of experience increases, wages tend to increase first then start to decrease after a certain threshold level of years of experience. It seems that they are not linearly correlated.
+
+```{r}
+wage.plot.3
+```
+
+There seems to be no meaningful or clear positive or negative relationship between these two variables by visual inspection of this plot. It seems that they may have a slightly positive correlation.
+
+## 3(c)
+
+```{r}
+wage.model1 <- lm_robust(wage ~ educ, wage, se_type = 'stata')
+wage.model2 <- lm_robust(wage ~ exper, wage, se_type = 'stata')
+wage.model3 <- lm_robust(wage ~ tenure, wage, se_type = 'stata')
+summary(wage.model1)
+```
+
+In this regression, the slope coefficient is statistically significant as $t=9.780$ but the intercept is not. This implies that as the number of years of education increases by one unit, earnings tend to increase by 60.21 units. About 10.6\% of the variation in wages is explained by our explanatory variable. The 95\% confidence interval for the slope is (48.13, 72.3). This interval doesn't contain zero so we can reject a null of zero slope. This is also the same for the intercept term as the confidence interval for the intercept doesn't contain zero in it and we reject a null of zero intercept.
+
+Matt: note that our $t$ statistic is smaller and our confidence interval is wider than appears in the 'official' Stata solutions, which did not include robust standard errors. They'd be identical if it had.
+
+```{r}
+summary(wage.model2)
+```
+In this regression, the slope coefficient is not statistically significant as $t=0.07$ and the intercept is statistically significant with $t=25.8$. Only 1\% of variation in wage is explained by our explanatory variable, suggesting experience doesn't explain much of the variation in wages. The 95\% confidence interval for the slope is (-5.45, 5.86), which contains zero and thus we cannot reject the null hypothesis of a zero slope coefficient. However, the confidence interval on the intercept coefficient does allow us to reject a null hypothesis of a zero intercept.
+
+```{r}
+summary(wage.model3)
+```
+
+In this regression, the slope coefficient is statistically significant at $t=4.076$ and the intercept coefficient is also statistically significant. The implication is that an additional year working with the company is associated with an increase in wages of 10.2 units. About 17\% of variation in wages is explained by our explanatory variable. The 95\% confidence interval for the slope is (5.30, 15.1). This interval doesn't contain zero so we can easily reject a null of zero slope. The same is true for the intercept term.
+
+## 3(d)
+
+```{r}
+confint(wage.model1, level = 0.99)
+confint(wage.model2, level = 0.99)
+confint(wage.model3, level = 0.99)
+```

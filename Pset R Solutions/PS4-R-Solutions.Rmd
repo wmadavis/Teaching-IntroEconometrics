@@ -1,0 +1,188 @@
+---
+title: "PS4 R Solutions"
+author: "Matthew Alampay Davis"
+date: "October 23, 2021"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r, include = FALSE}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Pset R Solutions')
+library(readstata13)
+library(dplyr)
+library(estimatr)
+library(ggplot2)
+library(magrittr)
+library(car)
+library(knitr)
+opts_chunk$set(tidy.opts=list(width.cutoff=60),tidy=TRUE)
+```
+# Question 1 #
+
+```{r}
+hprice <- read.dta13('hprice1.dta')
+summary(hprice)
+```
+
+## 1a ##
+
+```{r}
+price.model <- lm_robust(price ~ sqrft + bdrms, hprice, se_type = 'HC1')
+summary(price.model)
+```
+
+
+$$
+\hat{\text{price}} = -19.3 + 0.128\text{sqrft}+15.2\text{bdrms}
+$$
+
+## 1b ##
+
+Holding square footage constant, the expected change in price for an additional bedroom is \$15,200 (since the data is given in thousands of dollars)
+
+## 1c ##
+
+No longer holding square footage constant, the change in price is given by
+
+$$
+\begin{aligned}
+\Delta\text{price} &\ = 0.128\Delta\text{sqrft}+15.20\Delta\text{bdrms}\\
+  &\ = 0.128\times1400+15.20\times1\\
+  &\ = 194.4
+\end{aligned}
+$$
+
+```{r}
+0.128*1400+15.20
+```
+
+Since unit of price is in thousands this means $194,400 Because the house’s size is increasing as well, the total effect is much larger in (c). In part (b) the additional bedroom is obtained by converting existing rooms in the house so square footage remains unchanged. In (c), the added bedroom increases the square footage so the effect on price is much larger.
+
+## 1d ##
+
+```{r}
+price.model$r.squared
+price.model$adj.r.squared
+```
+
+According to the $R^2$, 63.2\% of the variation in the data is explained by the regressors. Accounting for the number of regressors included, the adjusted $R^2$ suggests this percentage is 62.3\%.
+
+By construction, adjusted $R^2$ is always smaller than $R^2$; this is due to the fact that it takes into account the presence of k = 2 regressors in the equation.
+
+## 1e ##
+
+The first house in the sample is
+
+```{r}
+first.obs <- head(hprice, 1) %>%
+  select(sqrft, bdrms)
+first.obs
+```
+
+We can generate our model's prediction for this observation's price using the `predict' command:
+
+```{r}
+predict(price.model, first.obs)
+```
+
+The unit of price is in thousands so we expect the house price to worth \$354,000. This is slightly different from the official solutions because we did not do any rounding
+
+## 1f ##
+
+The actual price is
+
+```{r}
+hprice$price[1]
+```
+
+The residual is the difference between the actual price and and the predicted price so the residual is given by
+
+```{r}
+hprice$price[1]-predict(price.model, first.obs)
+```
+
+This could suggest that the buyer underpaid by some margin. However, there are many other features of a house (some that we cannot even measure) that affect price, and we have not controlled for these. Thus, the negative residual could simply be a consequence of those other features made the house less attractive/valuable.
+
+# Question 2 #
+
+```{r}
+wage <- read.dta13('WAGE.dta')
+summary(wage)
+```
+
+## 2a ##
+
+See official solutions
+
+## 2b ##
+
+```{r}
+female.model <- lm_robust(wage ~ female, wage, se_type = 'stata')
+summary(female.model)
+```
+Since $X$  is a gender dummy (binary) variable that takes on the value of 1 if female and 0 otherwise, the slope coefficient is interpreted as the difference-in-group mean. That is, average hourly earnings declines by \$2.51 if the individual is female. Mathematically,
+
+$$
+\hat{\beta}_4 = E[Y_i|X_4=1]-E[Y_i|X_4=0] = -2.512
+$$
+
+## 2c ##
+
+```{r}
+wage$D <- 1-wage$female
+multicollinear.model <- lm_robust(wage ~ educ + female + D, wage, se_type = 'stata')
+summary(multicollinear.model)
+```
+As you can see it in the above regression output, our intercept is dropped out of the model. This is because of perfect multicollinearity between D and female. See the official solutions to see why one of these covariates have to be dropped.
+
+In the official solutions, the model resolves the multicollinearity differently: by retaining the intercept but dropping D from the model. See my Recitation 4 notes to see why these are equivalent solutions to multicollinearity.
+
+## 2d ##
+
+```{r}
+mod.2da <- lm_robust(wage ~ educ, wage, se_type = 'stata')
+mod.2db <- lm_robust(wage ~ educ + exper, wage, se_type = 'stata')
+summary(mod.2da)
+summary(mod.2db)
+```
+As can be seen from the above two tables, the coefficient on education has increased from 0.54 to 0.64. The reason for this increment is the addition of one of the omitted variable, namely, experience. The fact that it is also statistically significant suggests that it is one of the determinant variable for our dependent variable (condition 1). This result is similar to the test score example that we are using in the text that when we add percentage of English language learner in the model, the coefficient on class size has changed.
+
+## 2e ##
+
+```{r}
+full.homo <- lm(wage ~ educ + exper + tenure + female + nonwhite, wage)
+full.robust <- lm_robust(wage ~ educ + exper + tenure + female + nonwhite, wage, se_type = 'stata')
+summary(full.homo)
+summary(full.robust)
+```
+
+Here the first table provides a regression result based on homoscedasticity-only standard error and the second one is based on heteroskedasticity-robust standard errors. As it can be seen from these two tables, the coefficients are the same in both cases but the corresponding standard errors are different for each coefficient. Since, the remaining t-statistics, p-values, and the resulting confidence intervals in the two tables are different as all of them are dependent of the standard errors. The interpretation will proceed as usual.
+
+We care about the presence of heteroskedasticity in the data because, if indeed there is the problem of heteroskedasticity, the homoscedasticity-only standard errors will be wrong. As mentioned above, if the standard errors are wrong, then everything else that depends on these wrong standard errors will result in misleading and incorrect statistical inference. It is advisable to use heteroskedasticity-robust standard errors whenever possible even if there is no heteroskedasticity. This is because, if there is no heteroskedasticity in the data, both will give us the correct standard errors. (see page 163 of the text on this issue.)
+
+## 2f ##
+
+### Individual significance tests ###
+
+For individual null hypothesis of these coefficients, you can directly use the reported t-statistics and the corresponding p-values and confidence intervals.
+
+### Joint significance tests ###
+
+The relevant $F$ statistic is given in the regression output, but we can also use the linearHypothesis function to perform the test.
+
+```{r}
+# Vector of the hypotheses we want to jointly test
+hypotheses <- c('educ = 0',
+                'exper = 0',
+                'tenure = 0',
+                'female = 0',
+                'nonwhite = 0')
+linearHypothesis(full.robust, hypotheses, test = 'F')
+```
+
+As you can see, the computed F-stat is 35.62 and from the F-distribution table we know that the 1%, 5%, and 10% critical values for q =5 are 3.02, 2.21 and 1.85, respectively. This implies that we can reject the null hypothesis of all slope coefficients are zero. In fact, the p-values have already been computed for you in both the regression output and in the linearHypothesis output. $p<2.2e-16$ implies that we can reject the null at the 1\% significance level.
+
+# Questions 3 and 4
+
+Non-empirical, see official solutions

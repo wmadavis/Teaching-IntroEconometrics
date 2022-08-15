@@ -1,0 +1,546 @@
+---
+title: "PS4 R Notes and Practice Problems"
+author: "Matthew Alampay Davis"
+date: "October 24, 2021"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r, include = F}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Recitation 5')
+library(readstata13)
+library(dplyr)
+library(estimatr)
+library(ggplot2)
+library(magrittr)
+library(car)
+```
+
+Notice I've started my preamble chunk with an argument *include = F* (only visible if you're reading this as an .Rmd file; if you're reading the pdf, then you won't see a code chunk above). This just makes it so that when the pdf is knitted, the preamble doesn't show up. All these packages are still loaded, it just doesn't get printed. Obviously irrelevant to grading, but you might prefer your problem sets this way.
+
+# R commands
+
+Let's use a test dataset of workers in 2015 using their average hourly earnings (ahe) as our outcome variable of interest.
+
+```{r}
+cps <- read.dta13('CPS2015.dta')
+head(cps)
+
+# Creating new variables needed for the regressions
+cps %<>% mutate(log.ahe = log(ahe),
+                log.age = log(age),
+                age2 = age^2)
+```
+
+## Selecting elements from a vector by indexing
+
+We can pick out the nth element of a vector or dataframe just by using square brackets:
+
+```{r}
+cps$age2[1]
+```
+
+gives us the squared age of the first observation. This index works because we are looking at a vector, which is one dimensional. In comparison a data.frame is two-dimensional:
+
+```{r}
+head(cps)
+dim(cps)
+```
+
+If we wanted to pick the element in the fifth row and sixth column, we'd just use [5,6] as so:
+
+```{r}
+cps[5,6]
+```
+
+Just remember the first number is the row and the second is the column. We can also say
+
+```{r}
+cps[5, 'age2']
+```
+
+And if we wanted, for example, every column pertaining to the fifth observation, we would just leave the second argument blank to include all columns available:
+
+```{r}
+cps[5,]
+```
+
+## Selecting specific variables
+
+We already know how to subset data by rows using the filter function:
+
+```{r}
+test <- filter(cps, bachelor == 0)
+table(test$bachelor)
+```
+
+This gives the subset with no bachelor's degree.
+
+Similarly, we can subset data by columns using the select function:
+
+```{r}
+test <- select(cps, bachelor, female, age)
+head(test)
+```
+
+The first argument is the dataset we want to subset, then every argument after that separated by commas are the variables we want to keep.
+
+## Interaction terms
+
+ Regressions with interaction terms are a type of non-linear regression and they involve multiplying two covariates together:
+
+$$
+Y_i = \beta_0 + \beta_1 X_{1i} + \beta_2 X_{2i} + \beta_3 (X_{1i}\times X_{2i}) + u_i
+$$
+
+Obviously, the last covariate is the interaction term. They are relevant when we think that $X_1$'s effect on $Y$ depends on the value of $X_2$. For example, in our data, we may think that having a college degree affects earnings and that being a woman affects earnings, but we may also suspect that the effect a college education has on earnings is different for men and women. Similarly, we may think the effect being a woman has on earnings is different for those with and without a college degree. If so, then we want to include an interaction term to capture this relationship.
+
+There are a couple ways to do this. The first is that we define a new variable that is the product of the female and bachelor variables then include it as a regressor in our regression formula:
+
+```{r}
+cps %<>% mutate(female.bachelor = female*bachelor)
+int.model.1 <- lm_robust(ahe ~ female + bachelor + female.bachelor, cps, se_type = 'stata')
+summary(int.model.1)
+```
+
+The alternative is to just use a colon (":") in the formula without needing to define a new variable like so:
+
+```{r}
+int.model.2 <- lm_robust(ahe ~ female + bachelor + female:bachelor, cps, se_type = 'stata')
+summary(int.model.2)
+```
+
+## Writing dollar signs
+
+If we want to write an amount of money outside of a chunk, we have to prefix the dollar sign with a backslash or else R will think you're trying to write an equation. So forty dollars is \$40. A bit silly and trivial, but it comes up in this week's problem set.
+
+## Creating predictions from an lm or lm_robust model for certain values of the regressors
+
+Occasionally, we'll get a question like "Based on the regression you just ran, what is the expected value of y for a hypothetical observation with these given values for x1, x2, and x3?" We've seen this in past problem sets, but it'll be convenient this week to use a new command.
+
+As an example, refer to the interaction models we defined above where the y is hourly earnings and the covariates are female, bachelor, and their interaction.
+
+Suppose we want to know the model's predicted value for a male college graduate. Then we could use the *predict* command and use the model as an input. First, let's create the corresponding observation:
+
+```{r}
+male.college.graduate <- data.frame(female = 0,
+                                    bachelor = 1)
+```
+
+We here defined a new observation in terms of the variables that went into defining the model. Now let's feed it into the predict command, whose first argument is the regression model and that takes in a new argument called "newdata" which we'll set to our new observation:
+
+```{r}
+predict(int.model.2, newdata = male.college.graduate)
+```
+
+This model predicts an average hourly earnings of \$28.06 for a a person who is male and has a college degree.
+
+Note that we had to use int.model.2 because int.model.1 also includes a third variable, the created interaction term. To use predict on that model, we would have to create the new observation accordingly:
+
+```{r}
+male.college.graduate <- data.frame(female = 0,
+                                    bachelor = 1,
+                                    female.bachelor = 0)
+predict(int.model.1, newdata = male.college.graduate)
+```
+
+We can also create several observations to be predicted and the predict function will generate predictions for all of them:
+
+```{r}
+new.data <- data.frame(female = c(0, 0, 1, 1),
+                       bachelor = c(1, 0, 1, 0))
+new.predict <- predict(int.model.2, newdata = new.data)
+new.predict
+```
+
+These are predicted earnings for 1) a male college graduate, 2) a male without a college degree, 3) a female college graduate, and 4) a female without a college degree.
+
+If we were asked how earnings are expected to change for a male individual if they were to get a college degree, we would subtract prediction 1 from prediction 2:
+
+```{r}
+new.predict[1]-new.predict[2]
+```
+
+And we'd say something like "Having a college degree increases expected hourly earnings by \$10.5569."
+
+With this in mind, consider the following model, that adds the age regressor:
+
+```{r}
+model.2 <- lm_robust(ahe ~ female + bachelor + female:bachelor + age, cps, se_type = 'stata')
+summary(model.2)
+```
+
+Now suppose we are again asked how earnings are expected to change for a male individual if they were to get a college degree. To use the predict command, we would do the same thing but we'd also have to include a value for age. However, we aren't given a particular value of age to fix it to so what do we do?
+
+Notice that age enters independently here: it does not interact with any other covariates. So no matter what age the observation is, as long as we keep it fixed, the effect of age will disappear once we difference the predictions since both predictions will have +0.5269 times age in it. In other words, we can set it to any number as long as it's the same. Let's say 20 years old:
+
+```{r}
+new.data <- data.frame(female = c(0, 0, 1, 1),
+                       bachelor = c(1, 0, 1, 0),
+                       age = c(20, 20, 20, 20))
+new.predict <- predict(model.2, newdata = new.data)
+new.predict
+```
+
+Then again, we'd subtract 2 from 1 to get the effect on average hourly earnings of attaining a college degree, now controlling for age effects.
+
+```{r}
+new.predict[1]-new.predict[2]
+```
+
+# Practice Problems
+
+There was some confusion about the practice problem solutions not matching the questions in Stock and Watson so these questions are not the ones listed on the problem set but do solve the questions they are named after in the 2019 edition of Stock and Watson. They correspond to the practice questions listed in the problem set from last spring, which you can find in my Recitation 5 folder along with the solutions to the non-empirical questions from last year.
+
+Some topics these questions cover:
+
+### Multicollinearity: regressions dropping the intercept and regressions dropping a covariate
+
+We've talked about dealing with multicollinearity. We've also demonstrated that the two ways of dealing with collinearity are exactly equivalent (see Points of Emphasis from Recitation 4). Still, we may be interested in using a specific one of the two. Practice Question 1c shows us how to do this.
+
+### Summarizing by group
+
+We know how to take means and standard deviations of variables. But suppose we want to calculate separate means and standard deviations for different subsets. See Practice Question 2 for an example that also demonstrates the efficiency and readability of using piping and the "group_by" function from dplyr.
+
+### Plotting by group
+
+Suppose we want to draw a plot with separate lines of best fit for different subsets of the data so we can compare their slopes. Or suppose we want to draw a scatter plot and color points according to different values they take on (for example, color female observations different from male observations). ggplot lets us do this very efficiently See Practice Question 2bii.
+
+## Question 1: see the old problem set questions #
+
+Load the data
+
+```{r}
+tanf <- read.dta13('tanf2.dta')
+head(tanf)
+```
+
+### Part a
+
+We want to test whether there is a difference between the welfare programs of Midwest states and all other states
+
+$$
+H_0: \beta_{\text{midwest}} = \beta_{\text{black}\times\text{midwest}} = \beta_{\text{blue}\times\text{midwest}}=0
+$$
+Under the null hyptohesis, the expected level of benefits does not depend on whether the state is in the Midwest or not and so the coefficient on midwest will not be significantly different from zero and all the coefficients on all the interactions with midwest will be captured by their main effects.
+
+### Part b
+
+The regression we run is the following:
+
+```{r}
+q1.mod1 <- lm_robust(tanfreal ~ black + blue + midwest + black:midwest + blue:midwest, tanf, se_type = 'stata')
+summary(q1.mod1)
+```
+
+Writing the model as a regression equation with standard errors in parentheses underneath each coefficient:
+
+I really don't like this question asking for parentheses right beneath it because it's hard to implement on statistical software. This might be better done by hand or Microsoft Word, but here's my attempt in R:
+$$
+\hat{\text{tanfreal}} = 347.53 - 522.03\times\text{black} + 31.76\times\text{blue}+141.42\times\text{midwest}-1420.53\times\text{black}\times\text{midwest} + 204.14\times\text{blue}\times\text{midwest}
+$$
+$$
+(25.84) (112.36) (27.47) (34.07)(350.34)(42.86)
+$$
+
+$$
+\hat{\text{tanfreal}} = 347.53 - 522.03\times\text{black} + 31.76\times\text{blue}+141.42\times\text{midwest}-1420.53\times\text{black}\times\text{midwest} + 204.14\times\text{blue}\times\text{midwest}
+$$
+$$
+(25.84)   &\ (112.36)   &\ (27.47)    &\ (34.07) &\ (350.34) &\ (42.86)
+$$
+
+Performing the test for the null hypothesis in a:
+
+```{r}
+linearHypothesis(q1.mod1, c('midwest = 0', 'black:midwest = 0', 'blue:midwest = 0'), test = 'F')
+```
+
+We reject the null hypothesis and conclude that Midwestern states have significantly different welfare programs compared with non-Midwest ones.
+
+### Part c
+
+Note for this question, we want the intercept omitted
+
+```{r}
+tanf %<>% mutate(nonmidwest = 1-midwest)
+q1.mod2 <- lm_robust(tanfreal ~ 0 + nonmidwest + black:nonmidwest + blue:nonmidwest + midwest + black:midwest + blue:midwest, tanf)
+summary(q1.mod2)
+```
+
+Adding the "0 + " term to the formula ensures there is no intercept term. Alternatively, we could have also added a "-1" to the formula and accomplished the same thing.
+
+The hypothesis of no differences in welfare programs would equate main effects and interaction effects
+
+$$
+H_0: \gamma_{nonmidwest} = \gamma_{midwest},\gamma_{nonmidwest\times black}=\gamma_{midwest\times black},\gamma_{nonmidwest\times blue}=\gamma_{midwest\times blue}
+$$
+
+The relationship between the parameters of this model and those of the original are such that
+
+$$
+\beta_0 = \gamma_{nonmidwest}
+$$
+$$
+\beta_{black} = \gamma_{black\times nonmidwest}
+$$
+$$
+\beta_{blue} = \gamma_{blue\times nonmidwest}
+$$
+$$
+\beta_{midwest} = \gamma_{midwest}-\gamma_{nonmidwest}
+$$
+$$
+\beta_{black\times midwest} = \gamma_{black \times midwest}-\gamma_{black \times nonmidwest}
+$$
+$$
+\beta_{blue\times midwest} = \gamma_{blue \times midwest}-\gamma_{blue \times nonmidwest}
+$$
+
+So the two models are just different parameterizations of the same equations. The coefficients and their numbers are different insofar as they measure effects relative to different baselines. In the model with an intercept but with an omitted category, the effects are relative to the omitted category. In the model without an intercept but not omitting a category, the effects are relative to average.
+
+I'm not gonna bother writing the regression equation here since you get the point.
+
+### Part d
+
+By including an intercept term in the model, the model will suffer from multicollinearity. Thus, we cannot estimate the model by OLS since the model is overparameterized.
+
+
+## Question 2: Stock-Watson Empirical Exercise E8.1
+
+Loading the data:
+
+```{r}
+lead <- read.dta13('Lead_Mortality.dta')
+head(lead)
+```
+
+### Part a
+
+```{r}
+# Method 1: in one command
+lead %>%
+  group_by(lead) %>%
+  summarize(mean = mean(infrate),
+            sd = sd(infrate))
+
+# Method 2: creating two dataframes
+filter(lead, lead == 1) %$%  # Pipe to select the variable infrate
+  infrate %>% # Pipe to perform a function on this variable
+  mean
+filter(lead, lead == 1) %$%
+  infrate %>%
+  sd
+filter(lead, lead == 0) %$%
+  infrate %>%
+  mean
+filter(lead, lead == 0) %$%
+  infrate %>%
+  sd
+```
+
+### Part b
+
+Running the regression:
+
+```{r}
+## Method 1
+lead %<>% mutate(lead.ph = lead*ph)
+lead.mod <- lm_robust(infrate ~ lead + ph + lead.ph, lead, se_type = 'stata')
+## Method 2
+lead.mod <- lm_robust(infrate ~ lead + ph + lead:ph, lead, se_type = 'stata')
+summary(lead.mod)
+```
+
+#### i) Explaining the coefficients
+
+The first coefficient is the intercept, which shows the level of Infrate when lead = 0 and pH = 0. It dictates the level of the regression line. The second coefficient and fourth coefficients measure the effect of lead on the infant mortality rate. Comparing 2 cities, one with lead pipes (lead = 1) and one without lead pipes (lead = 0), but the same of pH, the difference in predicted infant mortality rate is
+
+$$0.462-0.057\times pH$$
+
+The third and fourth coefficients measure the effect of pH on the infant mortality rate. Comparing 2 cities, one with a pH of 6 and the other with a pH of 5, but the same leadedness, the difference in predicted infant mortality rate is
+
+$$-0.075-0.057\times lead$$
+
+so the difference is -0.075 for cities without lead pipes and -0.132 for cities with lead pipes.
+
+#### ii) Plotting estimated regression functions for different subgroups
+
+```{r}
+ggplot(lead, aes(x = ph, y = infrate, fill = factor(lead), color = factor(lead))) +
+  theme_bw() +
+  geom_smooth(method = 'lm')
+```
+
+Notice we have turned the variable *lead* into a factor. The factor function converts a numerical variable into a categorical variable so that all values that it takes on are distinct groups. In ggplot, this means that when we set the fill and color colors to depend on this factor so that when we use geom_smooth to plot lines of best fit, it'll create separate lines for the set of observations with lead == 1 and for lead == 0 (the only two values lead takes in this data).
+
+The infant mortality rate is higher for cities with lead pipes, but the difference declines as the pH level increases.
+
+#### iii) Does lead have a statistically significant effect on infant mortality?
+
+```{r}
+linearHypothesis(lead.mod, c('lead = 0', 'lead:ph = 0'), test = 'F')
+```
+
+The F-statistic for the coefficient on lead and the interaction term is F = 3.94, which has a p- value of 0.02, so the coefficients are jointly statistically significantly different from zero at the 5% but not the 1% significance level.
+
+#### iv) Does the effect of lead on infant mortality depend on pH? Is this dependence statistically significant?
+
+The interaction term has a t-statistic of t = -2.02, so the coefficient is significant at the 5\% but not the 1\% significance level.
+
+#### v) Average value of pH
+
+```{r}
+mean(lead$ph)
+```
+
+At this level, the estimated effect of lead on infant mortality is
+
+```{r}
+lead.1 <- data.frame(lead = 1, ph = mean(lead$ph))
+lead.0 <- data.frame(lead = 0, ph = mean(lead$ph))
+predict(lead.mod, newdata = lead.1)-predict(lead.mod, newdata = lead.0)
+```
+
+The standard deviation of pH is
+
+```{r}
+sd(lead$ph)
+```
+
+The estimated effect of lead on infant mortality when the pH is one standard deviation lower than average level of pH in the sample is given by
+
+```{r}
+lead.sd1 <- data.frame(lead = 1, ph = mean(lead$ph)-sd(lead$ph))
+lead.sd0 <- data.frame(lead = 0, ph = mean(lead$ph)-sd(lead$ph))
+predict(lead.mod, newdata = lead.sd1)-predict(lead.mod, newdata = lead.sd0)
+```
+
+If the pH were one standard deviation larger than average:
+
+```{r}
+lead.sd1 <- data.frame(lead = 1, ph = mean(lead$ph)+sd(lead$ph))
+lead.sd0 <- data.frame(lead = 0, ph = mean(lead$ph)+sd(lead$ph))
+predict(lead.mod, newdata = lead.sd1)-predict(lead.mod, newdata = lead.sd0)
+```
+
+#### vi) Constructing a 95\% confidence interval for the effect of lead on infant mortality when pH = 6.5
+
+Referring to method 2 of section 7.3. We add and subtract $6.5\beta_3$ to the regression:
+
+$$
+\text{Infrate} = \beta_0 + (\beta_1+6.5\beta_3)\text{lead} + \beta_2\text{pH}+\beta_3[\text{lead}\times\text{pH}-6.5\times\text{lead}]
+$$
+
+Estimating this regression
+
+```{r}
+lead2 <- mutate(lead, x1 = lead, x2 = ph, x3 = lead*ph-6.5*lead)
+lm_robust(infrate ~ x1 + x2 + x3, lead2)
+```
+
+Then the relevant confidence interval is the one on x1: 0.027 to 0.157
+
+### Part c
+
+There are several demographic variables in the dataset. You should add these and see if the conclusions from (b) change in an important way.
+
+(Sorry for unsatisfying answer; these were the solutions provided)
+
+## Question 3: Stock-Watson Empirical Exercise 8.2
+
+One thing to note here is that this data comes from 2015 whereas the solutions seem to use 2012 data so the estimates are slightly different. When I'm comparing models below, I"m copying and pasting the official answers provided so they may actually be incompatible with the results being displayed. I only include them because they show you how you'd want to answer the question, not because the results are necessarily correct.
+
+Load data:
+
+```{r}
+cps <- read.dta13('CPS2015.dta')
+head(cps)
+
+# Creating new variables needed for the regressions
+cps %<>% mutate(log.ahe = log(ahe),
+                log.age = log(age),
+                age2 = age^2)
+```
+
+This question asks us to run several regressions so I think it's convenient to just run them all at the beginning then refer to them as needed:
+
+```{r}
+q3.mod.a <- lm_robust(ahe ~ age + female + bachelor, cps, se_type = 'stata')
+q3.mod.b <- lm_robust(log.ahe ~ age + female + bachelor, cps, se_type = 'stata')
+q3.mod.c <- lm_robust(log.ahe ~ log.age + female + bachelor, cps, se_type = 'stata')
+q3.mod.d <- lm_robust(log.ahe ~ age + age2 + female + bachelor, cps, se_type = 'stata')
+q3.mod.i <- lm_robust(log.ahe ~ age + age2 + female + bachelor + female:bachelor, cps, se_type = 'stata')
+```
+
+All the subquestions also ask us to look at the effect of age increasing from 25 to 26 and from 33 to 34 so we also define those scenarios here. Since we will be interested in changes, we set sex to female and bachelor to 1 arbitrarily (these will wash out when we take differences anyway).
+
+```{r}
+age.25 <- data.frame(age = 25) %>%
+  mutate(age2 = age^2, log.age = log(age),
+         female = 1, bachelor = 1)
+age.26 <- data.frame(age = 26) %>%
+  mutate(age2 = age^2, log.age = log(age),
+         female = 1, bachelor = 1)
+age.33 <- data.frame(age = 33) %>%
+  mutate(age2 = age^2, log.age = log(age),
+         female = 1, bachelor = 1)
+age.34 <- data.frame(age = 34) %>%
+  mutate(age2 = age^2, log.age = log(age),
+         female = 1, bachelor = 1)
+```
+
+### Part a
+
+```{r}
+summary(q3.mod.a)
+predict(q3.mod.a, newdata = age.26)-predict(q3.mod.a, newdata = age.25)
+predict(q3.mod.a, newdata = age.34)-predict(q3.mod.a, newdata = age.33)
+```
+
+### Part b
+
+```{r}
+summary(q3.mod.b)
+predict(q3.mod.b, newdata = age.26)-predict(q3.mod.a, newdata = age.25)
+predict(q3.mod.b, newdata = age.34)-predict(q3.mod.a, newdata = age.33)
+```
+
+### Part c
+
+```{r}
+summary(q3.mod.c)
+predict(q3.mod.c, newdata = age.26)-predict(q3.mod.a, newdata = age.25)
+predict(q3.mod.c, newdata = age.34)-predict(q3.mod.a, newdata = age.33)
+```
+
+### Part d
+
+```{r}
+summary(q3.mod.d)
+predict(q3.mod.d, newdata = age.26)-predict(q3.mod.a, newdata = age.25)
+predict(q3.mod.d, newdata = age.34)-predict(q3.mod.a, newdata = age.33)
+```
+
+### Part e
+
+The regressions differ in their choice of one of the regressors. They can be compared on the
+basis of the R2 . The regression in (3) has a (marginally) higher R2 , so it is preferred.
+
+### Part f
+
+The regression in (4) adds the variable Age2 to regression (2). The coefficient on Age2 is not statistically significant (t = -1.72) and the estimated coefficient is very close to zero. This suggests that (2) is preferred to (4), the regressions are so similar that either may be used.
+
+### Part g
+
+The regressions differ in their choice of the regressors (ln(Age) in (3) and Age and Age2 in 2
+(4)). They can be compared on the basis of the R . The regression in (4) has a (marginally) 2
+higher R , so it is preferred.
+
+Parts h-l skipped in the solutions so skipped here as well
+
+
+## Question 4: Stock-Watson Empirical Exercise E9.1
+
+This question uses the same data. This question doesn't require much programming so please just refer to the posted solutions in my recitation folder.

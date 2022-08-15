@@ -1,0 +1,640 @@
+---
+title: "Recitation 3: R Notes and PS2 Empirical Practice Problems"
+author: "Matthew Alampay Davis"
+date: October 5, 2021
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+As mentioned in the notes from my first recitation, if you have not used R Notebooks before, you will need to run the following command into your console or command panel (not the editor panel):
+
+tinytex::install_tinytex()
+
+You only ever need to do this once so if you've done it before, don't do it again. This just allows R to produce pdfs so you need to do this so you can actually produce your problem sets!
+
+# Part 1: Plotting data #
+
+Going back to our cars dataset, let's try plotting the data. Again, do this by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Cmd+Shift+Enter*. 
+
+```{r}
+plot(cars)
+```
+
+Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Cmd+Option+I*.
+
+When you save the notebook, an HTML or pdf file containing the code and output will be saved alongside it in the same folder (click the *Preview* button or press *Cmd+Shift+K* to preview the HTML file). 
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed. We'll tend to prefer to Knit.
+
+# Part 2: Downloading packages #
+
+We can access new or different functions by downloading "packages", which are basically third-party collections of functions that someone coded up to complement the functions that come in-built with R. You'll find that we'll rely on these third-party functions basically every week. To download a package, for example the the "ggplot2" package, run the following commmand:
+
+install.packages('ggplot2')
+
+When installing packages, like we did before, run this command in the console panel rather than in the notebook panel. You'll only ever need to do this once per package (per computer).
+
+This package specializes in creating customized plots and graphs. To load all the functions that come with ggplot2, use the library command:
+
+```{r}
+library(ggplot2)
+```
+
+The library command loads third-party packages like ggplot2 that we've previously downloaded so that we can use the functions contained in them. Now consider this alternative way of plotting the same graph:
+
+```{r}
+ggplot(data = cars, aes(x = speed, y = dist)) +
+  geom_point()
+```
+
+It's the same graph, but using the ggplot package. ggplot() is a function, cars is its "data" argument, and aes (short for aesthetic) is an argument that itself has arguments: x = speed tells it to treat the speed column in cars as the x-axis variable and y = dist tells it to treat the dist column as the y-axis variable.
+
+We end the line with a "+" to denote we want to add an additional plot element. Here, we wanted a scatterplot so we use the geom_point() function with no argument (nothing in its parentheses). This may seem much more complicated than the standard plot function, but once you get a hang of this sort of coding grammar, it allows us to make a lot of easy customizations:
+
+Let us save the graph above as an object. To do this, we come up with some name (let's say "test.plot") and assign the graph to it using the "<-" assignment:
+
+```{r}
+test.plot <- ggplot(data = cars, aes(x = speed, y = dist)) +
+  geom_point()
+```
+
+The first line calls the ggplot function and tells it what dataset we want to use and which variables we want to use as our x and y variables. The second line choose the kind of graph we want, a scatterplot. The "+" links the two lines as one command.
+
+Now we have an object called test.plot which is the above graph. You can see a list of all the objects in our 'environment' in the 'Environment' panel in RStudio. We can plot this object:
+
+```{r}
+print(test.plot)
+```
+
+And we can make some new modifications, thanks to the grammar of ggplot2. Let's define the modified plot as a new object called test.plot2:
+
+```{r}
+test.plot2 <- test.plot +
+  # Change the point colors to red
+  geom_point(col = 'red') +
+  # Add a line of best fit with a confidence interval
+  geom_smooth(method = 'lm') +
+  # Modify the axis titles
+  ylab('Distance') +
+  xlab('Speed') +
+  ggtitle('Example plot title') +
+  # Simplify the plot theme to black-and-white
+  theme_bw()
+print(test.plot2)
+```
+
+Notice that we can add comments to our chunks of code by using "#" at the end of a line. Anything after the "#" will be ignored by R until the next line of code. This is useful for communicating to yourself or your reader what each line.
+
+Of course, we can also modify the standard "plot" function:
+
+```{r}
+plot(cars, main = 'Example plot title', xlab = 'Distance', ylab = 'Speed')
+```
+
+Again, ggplot may seem much more complicated than the simple plot command, but a little more effort early on will pay off later on when we do other types of plots because its modifiability is intuitive.
+
+# Part 3: Loading data #
+
+The way R Notebooks work, the "working directory" is the folder in which the notebook is saved. This means that if you want to open a file, it is most convenient to have that file in the same folder as the notebook. For example, I have a Stata dataset called "animals.dta" (all Stata datasets end with .dta) in my "Recitation 1" folder. Let's open that file.
+
+First note that since R by default cannot open a Stata dataset, we must download/install a package that can. So just like we did with the ggplot package, run this command in the console panel:
+
+install.packages('readstata13')
+
+Then load the package:
+
+```{r}
+library(readstata13)
+```
+
+Then we'll use the "read.dta13" command from this package to read the file in our working directory. Let's call the dataset "animals" by using the assignment notation from before:
+
+```{r}
+animals <- read.dta13('animals.dta')
+```
+
+Note you put the filename/filepath 'animals.dta' in quotes since it is not an object in our environment
+
+Let's get a quick summary of this data as we did with the cars dataset:
+
+```{r}
+dim(animals) # What are the dimensions (number of rows, number of columns) of this dataset
+nrow(animals) # Same as above, but just the number of rows
+ncol(animals) # The number of columns
+head(animals) # The first few observations
+summary(animals) # A brief summary of each variable in the dataset
+```
+
+We can see that different variables are of different types: village, hhn, and id are numbers (that's why we can compute its mean and maximum) while others are "characters" or "strings", i.e. its values are text entries like "Goats" or "Chickens". We will be interested in both types throughout this course.
+
+Another way we can summarize this data is by tabulation. This lets us look at the frequency of each value of a variable. For example:
+
+```{r}
+table(animals$animal)
+```
+
+This tells us how often each animal appears in our dataset. Notice that we can refer to a specific column in the animals dataset by its name using the "\$" character. "animals\$animal" refers to the column named "animal" in the "animals" object (i.e. dataset in this case). We could have also referred to the animals\$village column. We'll use this often.
+
+# Part 4: Regressions #
+
+The most important thing we'll do in this course is run regression models of various types. Going back to the cars dataset, let's suppose we want to run a very simple univariate regression of speed on distance. Let's create a model object called "cars.mod" and use the "lm" function (short for linear regression) to run a regression on the cars dataset:
+
+```{r}
+cars.mod <- lm(speed ~ dist, data = cars)
+```
+
+Here, the first argument is a formula "speed ~ dist" meaning speed is our outcome variable and distance is our single regressor. The second argument tells us which object/dataset these variables should come from. This command then gives us an object called "cars.mod" that is a model. If we wanted to print the regression output, we would use the "summary" function on this object:
+
+```{r}
+summary(cars.mod)
+```
+
+We can clearly see this gives us a y-intercept (i.e. a constant) of 8.28391 and a coefficient estimate of 0.16557 on distance. We interpret this as saying an increase in distance by 1km (or whatever unit distance is in) is associated with an increase in speed of 0.16557. The intercept and distance coefficients each have standard errors, t-values, and p-values clearly associated with them, which we care about for inference.
+
+We can do some more things with our model object, for example:
+
+```{r}
+# If we only cared about the coefficients:
+coef(cars.mod)
+
+# If we want to extract the residuals (don't worry if you don't know what these are for yet)
+cars.mod$residuals
+
+# If we want to extract the model's predicted/fitted values of y
+cars.mod$fitted.values
+
+# And if you want to save any of these as separate objects to be referred to later:
+cars.coefs <- coef(cars.mod)
+cars.resid <- cars.mod$residuals
+cars.fit <- cars.mod$fitted.values
+
+summary(cars.mod)
+```
+
+# Part 5: A note about working directories, R Notebooks, and knitting
+
+It is very common to begin an R script or R notebook with a chunk that sets your working directory and loads the packages that we are going to use in the script or Notebook. An example might be something like
+
+```{r}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Recitation 3')
+library(readstata13)
+library(ggplot2)
+```
+
+*setwd()* here sets my working directory to the given folder (obviously adapt that line to the folder you like for your computer). This tells R to look in that folder whenever we refer to a file (usually a dataset). For example, this folder is where this Notebook is saved in my computer and it's also where a dataset called 'Growth.dta', which we use in this problem set is saved. Now I can load this dataset easily:
+
+```{r}
+growth <- read.dta13('Growth.dta')
+head(growth)
+```
+
+Critically, when we use R Notebooks to produce pdfs by 'Knitting', it essentially runs R from scratch as if we had never loaded any packages or defined any objects. It also assumes the working directory is the folder where the R Notebook is saved even if you've used 'setwd()'. In practice, this might be different from the working directory of your environment. It's generally not the default working directory when you open RStudio, for example.
+
+Secondly, knitting runs the code in our code chunks in the order that they're written here. If you've defined an object called 'data' and at some point you run a command like 'mean(data)', you have to make sure the object data is defined earlier than the command mean(data) is run or else R won't know what 'data' is and it won't produce the pdf. They can be in different chunks, it's just the order of appearance that matters. Similarly, if you defined an object but you didn't do so in your Notebook, R won't know what that object is when knitting and it won't produce a pdf.
+
+If you run into any trouble related to this, do email me or post a question on Piazza and if this causes any issues. Google is also your friend here. I think this is the main thing that might cause confusion the first time we use R Notebooks so do let me know!
+
+# Part 6: Creating a data.frame
+
+Often we'll be interested in building a dataset manually rather than load an existing dataset into R. We'll do this by constructing what are called data.frame objects, which is basically just a spreadsheet. Rows are observations and columns are variables.
+
+I can't do the example from the problem set for you, but let's look at another dataset, one that is inbuilt into R.
+
+(As an aside, if you want to see the list of all datasets that are inbuilt into R, you can type "data()" as a command)
+
+```{r}
+head(ToothGrowth)
+```
+
+This one is called "ToothGrowth". For context, these are the results from an experiment studying the effect of vitamin C on tooth growth in 60 Guinea pigs. Each animal received one of three dose levels of vitamin C (0.5, 1, and 2 mg/day) by one of two delivery methods, (orange juice or ascorbic acid (a form of vitamin C and coded as VC).
+
+That isn't important for our purposes, we just want to use it to learn about creating datasets by hand. Let's create these first six rows by defining objects called vectors. We use the "c" command to do this. 
+
+```{r}
+x1 <- c(4.2, 11.5, 7.3, 5.8, 6.4, 10.0)
+x2 <- c('VC', 'VC', 'VC', 'VC', 'VC', 'VC')
+x3 <- c(0.5, 0.5, 0.5, 0.5, 0.5, 0.5)
+```
+
+Notice that when we input words, we have to put them in quotation marks but numbers are fine as they are.
+
+We can then easily combine these into a data.frame object that we'll call tooth.data
+
+```{r}
+tooth.data <- data.frame(x1, x2, x3)
+tooth.data
+```
+
+Which is a nice recreation of the original dataset (at least its first six rows). We also could've very easily assigned names to the variables:
+
+```{r}
+tooth.data <- data.frame(len = x1,
+                         supp = x2,
+                         dose = x3)
+tooth.data
+```
+
+This makes it convenient when we want to perform some commands on the data. We simply refer to the data.frame *tooth.data* and its variable *len* or *supp* or *dose* by combining them with a dollar sign symbol: *tooth.data$len*.
+
+Let's look at some applications of this, but let's use the full set of observations in the dataset instead of just the first 6. This means just redefining tooth.data as the original dataset:
+
+```{r}
+tooth.data <- ToothGrowth
+```
+
+## Some summary statistics
+
+```{r}
+# Finding the mean
+mean(tooth.data$len)
+
+# Finding the standard deviation and variance
+sd(tooth.data$len)
+var(tooth.data$len)
+
+# A general summary of the data
+summary(tooth.data)
+
+# Correlation between length and dose
+cor(tooth.data$len, tooth.data$dose)
+```
+
+## Back to regressions
+
+And let's do some basic regression commands again:
+
+```{r}
+tooth.model <- lm(len ~ dose, data = tooth.data)
+# Look at the model output
+summary(tooth.model)
+```
+
+If we want robust standard errors (which we often will), we will need another package called estimatr (so install this if you haven't already):
+
+```{r}
+library(estimatr)
+tooth.model.robust <- lm_robust(len ~ dose, data = tooth.data,
+                                se_type = 'stata')
+summary(tooth.model.robust)
+```
+
+The "SE type" argument here makes sure we get the same standard errors that we would using Stata's robust command.
+
+Maybe we want to add the residuals and fitted/predicted values from this regression to the original dataset:
+
+```{r}
+# The original
+head(tooth.data)
+
+# Now let's create variables called residuals and predictions
+tooth.data$residuals <- tooth.model$residuals
+tooth.data$predictions <- tooth.model$fitted.values
+
+# New dataset
+head(tooth.data)
+```
+
+We also could've done the same thing in the following way:
+
+```{r}
+tooth.residuals <- tooth.model$residuals
+tooth.predictions <- tooth.model$fitted.values
+tooth.data <- data.frame(ToothGrowth,
+                         residuals = tooth.residuals,
+                         predictions = tooth.predictions)
+head(tooth.data)
+```
+
+Let's return to the predicted linear model:
+
+```{r}
+summary(tooth.model)
+```
+
+We can also summarize it through
+
+```{r}
+library(lmtest) # Install this package if you haven't already
+coeftest(tooth.model)
+```
+
+Let's create a 95% confidence interval for our coefficient estimates using the *confint* function:
+
+```{r}
+confint(tooth.model)
+confint(tooth.model.robust)
+```
+
+We could also do this for different confidence levels. For example, a 99% confidence interval:
+
+```{r}
+confint(tooth.model, level = 0.99)
+```
+
+## A little bit about typesetting equations in R Notebooks using TeX
+
+We can write the implied regression model very nicely in R using the language of TeX as shown in the first week:
+
+$$
+\hat{Length} = 7.4225 + 9.7636 \times Dosage_{i}
+$$
+
+TeX might take a while to get used to but the basics are that an underscore _ puts everything in the curly brackets as a subscript. We can also use ^ to superscript (for example, for exponents) and we use the hat command to signify something is a predicted quantity.
+
+Now let's get to the practice problems!
+
+# Practice Problem 5: SW Empirical Exercise 4.1
+
+## Part a
+
+Load the growth dataset
+
+```{r}
+library(readstata13) # If you've already loaded the package earlier, you don't need this line
+growth <- read.dta13('Growth.dta') # File names are case sensitive
+head(growth)
+```
+
+We want to construct a scatterplot of growth on average tradeshare:
+
+We can do this in a couple of ways.
+
+Method 1: Base R
+```{r}
+# Define the linear model
+growth.model <- lm(growth ~ tradeshare, data = growth)
+
+{plot(growth$tradeshare, growth$growth)
+abline(growth.model)}
+```
+
+Notice that using Base R, we have to combine the plot and abline functions using curly brackets. This is just a quirk of R Notebooks.
+
+Method 2: ggplot2
+```{r}
+library(ggplot2) # If you've already loaded the package earlier, you don't need this line
+ggplot(growth, aes(x = tradeshare, y = growth)) +
+  geom_point() +
+  geom_smooth(method = 'lm', se = F)
+```
+
+## Part b
+
+Notice that there is a very anomalous value here whose tradeshare is far greater than any other country. We might want to drop it.
+
+## Part c
+
+```{r}
+summary(growth.model)
+```
+
+Countries with tradeshares of 0.5 and 1.0 will have predicted growth rates
+
+```{r}
+0.6403 + 2.3*0.5
+0.6403 + 2.3*1
+```
+
+## Part d
+
+Let's use the *dplyr* package (install if you haven't) to modify the dataset. dplyr is one of the most popular packages in R so we'll probably be using it a lot.
+
+```{r}
+library(dplyr)
+growth2 <- filter(growth, tradeshare <= 1.5)
+growth.model2 <- lm(growth ~ tradeshare, data = growth2)
+```
+
+This creates a new dataset that is the same as the original dataset but filters out any observations whose tradeshare is less than or equal to 1.5.
+
+Alternatively we could do this in one line without defining a new dataset:
+
+```{r}
+growth.model2 <- lm(growth ~ tradeshare,
+                    data = filter(growth, tradeshare <= 1.5))
+```
+
+Then we have:
+
+```{r}
+summary(growth.model2)
+0.9574 + 1.6809*0.5
+0.9574 + 1.6809*1
+```
+
+## Part e
+
+We'll plot both lines of best fit on the original scatterplot
+
+Method 1:
+
+```{r}
+{plot(growth$tradeshare, growth$growth)
+abline(growth.model, col = 'red')
+abline(growth.model2, col = 'blue')}
+```
+
+Method 2: ggplot2
+```{r}
+ggplot(growth, aes(x = tradeshare, y = growth)) +
+  geom_point() +
+  geom_smooth(method = 'lm', se = F, color = 'red') +
+  geom_smooth(method = 'lm', se = F, color = 'blue', data = growth2)
+```
+
+Here, we specified the filtered growth dataset as an argument for the second line of best fit. The blue line is shorter because the Malta point is not in that dataset. In comparison, the base R graph just has the lines extending indefinitely in both directions.
+
+## Part f
+
+Something about Malta being a small island nation, etc.
+
+# Practice Problem 6: SW Empirical Exercise 4.2
+
+Let's load the new dataset
+
+```{r}
+earnings <- read.dta13('Earnings_and_Height.dta',
+                       generate.factors = T,
+                       nonint.factors = T)
+head(earnings)
+```
+
+## Part a
+
+```{r}
+median(earnings$height)
+```
+
+## Part b
+
+There are a number of ways to do these conditional statistic
+
+### Part b-i
+
+Average earnings for workers whose height is at most 67 inches
+
+```{r}
+# Method 1
+mean(filter(earnings, height <= 67)$earnings)
+# Method 2
+earnings2 <- filter(earnings, height <= 67)
+mean(earnings2$earnings)
+# Method 3 (a bit more advanced)
+earnings %>%
+  filter(height <= 67) %$%
+  earnings %>%
+  mean
+```
+
+This last method breaks up the process in a very clear way but it takes some getting used to the grammar here. The '%>%' part is what is called a pipe. On the LHS is an object and on the RHS is a function. The pipe puts what's on the LHS as the first argument in the function on the RHS. The first pipe is equivalent to the first line in Method 2.
+
+Similarly, the LHS of the '%$%' pipe is an object (here it is the output from the first pipe). The RHS of the is the name of a variable in the LHS object.
+
+Finally, the last pipe takes this variable from the previous pipe and uses it as the first argument in the function on the RHS.
+
+If this is confusing, then just ignore Method 3, but it is very convenient and clear to read once you gets used to it.
+
+### Part b-ii
+
+Similar but for a different condition:
+
+```{r}
+mean(filter(earnings, height > 67)$earnings)
+```
+
+### Part b-iii
+
+Let's define a dummy variable called $tall$ to split the sample by height so we can compare tall-people earnings to short-people earnings. Then run a t-test:
+
+```{r}
+earnings$tall <- earnings$height > 67
+t.test(earnings ~ tall, data = earnings)
+```
+
+This gives us a 95% confidence interval for the difference in average earnings (4706.2 to 6292.6) and t-statistics and a p-value to test for significance in differences.
+
+## Part c
+
+Scatterplot earnings and height
+
+```{r}
+plot(earnings$height, earnings$earnings)
+
+ggplot(earnings, aes(x = height, y = earnings)) +
+  geom_point()
+```
+
+## Part d
+
+Regress earnings on height
+
+```{r}
+height.mod <- lm_robust(earnings ~ height, data = earnings)
+summary(height.mod)
+
+# Part d-i
+coefficients(height.mod)
+
+# Part d-ii
+-512.7336 + 707.67*67
+-512.7336 + 707.67*70
+-512.7336 + 707.67*65
+```
+
+## Part e
+
+Let's convert the height to centimeters
+
+```{r}
+earnings$heightcm <- earnings$height*2.54
+
+# Parts e-i and e-ii
+cm.mod <- lm_robust(earnings ~ heightcm, data = earnings)
+coefficients(cm.mod)
+
+# Part e-iii
+cm.mod$r.squared
+
+# Part e-iv
+summary(cm.mod)
+```
+
+## Parts f and g
+
+```{r}
+f.mod <- lm_robust(earnings ~ height, data = filter(earnings, sex == '0:female'))
+m.mod <- lm_robust(earnings ~ height, data = filter(earnings, sex != '0:female'))
+summary(f.mod)
+summary(m.mod)
+```
+
+If a randomly selected woman is 1 inch taller, we predict her earnings to be greater by \$511.2. For men, by \$1307. (Note that if we want to use the dollar sign as a dollar sign in R notebooks, we put a backslash before it. Otherwise, it thinks we want to write an equation.)
+
+## Part h
+
+Height may be correlated with other factors that cause earnings. For example, height may be correlated with strength which in some occupations makes workers more productive. There are other potential factors correlated with height that have a causal relationship with earnings. This type of relationship is called endogeneity and will be of interest to us throughout the course.
+
+# Practice Problem 7: SW Empirical Exercise 5.3
+
+```{r}
+smoking <- read.dta13('birthweight_smoking.dta')
+head(smoking)
+```
+
+## Part a
+
+```{r}
+# Part a-i
+mean(smoking$birthweight)
+
+# Part a-ii and a-iii
+# Method 1
+filter(smoking, smoker == 1) %$%
+  birthweight %>%
+  mean
+filter(smoking, smoker == 0) %$%
+  birthweight %>%
+  mean
+# Method 2
+t.test(birthweight ~ smoker, data = smoking)
+```
+
+## Part b
+
+We can use the same t-test function to answer part b-i.
+
+```{r}
+weight.test <- t.test(birthweight ~ smoker, data = smoking)
+# Differences
+diff(weight.test$estimate)
+
+# Standard error of difference
+weight.test$stderr
+
+# 95% confidence interval on differences
+weight.test$conf.int
+```
+
+## Part c
+
+```{r}
+weight.model <- lm_robust(birthweight ~ smoker, data = smoking)
+summary(weight.model)
+```
+
+### Part c-i
+
+The intercept is the average birthweight for non-smokers
+
+The slope is the difference between average birthweights for smokers and non-smokers
+
+### Part c-ii
+
+The standard errors are the same (if we use the robust standard errors)
+
+### Part c-iii
+
+```{r}
+confint(weight.model)
+```

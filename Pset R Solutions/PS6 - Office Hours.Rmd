@@ -1,0 +1,27 @@
+---
+title: "PS6 Office Hours"
+author: "Matthew Alampay Davis"
+date: "November 29, 2021"
+output:
+  pdf_document: default
+  html_notebook: default
+---
+
+```{r, include = FALSE}
+setwd('~/Documents/Grad School/Columbia/Y3/Metrics TA/Pset R Solutions')
+library(readstata13)
+library(dplyr)
+library(estimatr)
+library(ggplot2)
+library(magrittr)
+library(car)
+library(knitr)
+library(lmtest)
+```
+# Question 1 #
+
+```{r}
+smoking <- read.dta13('smoking.dta') %>%
+  mutate(age2 = age^2)
+head(smoking)
+```
